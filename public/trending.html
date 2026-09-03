@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trending Now — StartFEST 2026</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/pages.css">
+<style>
+  /* ---------- trending sessions (page-local, not shared) ---------- */
+  .trending-list {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 20px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .trending-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: background-color 0.6s ease;
+  }
+  .trending-row.flash { background-color: rgba(196, 229, 56, 0.35); }
+  .trending-rank {
+    flex-shrink: 0;
+    width: 40px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--ink-soft);
+  }
+  .trending-row--top .trending-rank { color: var(--accent-ink); }
+  .trending-row--top {
+    border: 2px solid var(--accent);
+  }
+  .trending-body { flex: 1; min-width: 0; }
+  .trending-title {
+    font-size: 16px;
+    font-weight: 800;
+    text-decoration: none;
+    color: var(--ink);
+  }
+  .trending-title:hover { text-decoration: underline; }
+  .trending-meta {
+    font-size: 13px;
+    color: var(--ink-soft);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 4px;
+  }
+  .trending-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: right;
+    flex-shrink: 0;
+    font-size: 13px;
+  }
+  .trending-stats .recent-count { font-weight: 800; color: var(--ink); }
+  .trending-stats .total-count { color: var(--ink-soft); }
+  .skeleton-trending-row { height: 84px; }
+</style>
+</head>
+<body>
+<header class="site-header"><div id="site-nav"></div></header>
+
+<div class="page-header">
+  <h1>Trending Now</h1>
+  <p class="tagline">Sessions gaining registrations fastest right now.</p>
+  <p class="date-range">This tracks registration momentum, not a live headcount in the room.</p>
+</div>
+
+<div class="trending-list" id="trending-list">
+  <div class="card skeleton skeleton-trending-row"></div>
+  <div class="card skeleton skeleton-trending-row"></div>
+  <div class="card skeleton skeleton-trending-row"></div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/trending.js"></script>
+</body>
+</html>

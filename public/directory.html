@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attendee Directory — StartFEST 2026</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/pages.css">
+<style>
+  /* ---------- attendee directory (page-local, not shared) ---------- */
+  .directory-search-bar {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 4px 20px 16px;
+  }
+  .directory-search-bar input[type="search"] {
+    max-width: 420px;
+  }
+  .directory-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 1100px) {
+    .directory-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 900px) {
+    .directory-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .directory-grid { grid-template-columns: 1fr; }
+  }
+  .attendee-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .attendee-card-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .attendee-card-top img,
+  .attendee-card-top .avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 999px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .attendee-card-name { font-size: 15px; font-weight: 800; }
+  .attendee-card-role { font-size: 13px; color: var(--ink-soft); }
+  .attendee-card-bio { font-size: 13px; margin: 0; color: var(--ink); }
+  .attendee-card-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  .attendee-link-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(18, 49, 79, 0.08);
+    color: var(--ink);
+  }
+  .attendee-link-pill:hover { background: rgba(18, 49, 79, 0.16); }
+  .skeleton-attendee-card { height: 168px; }
+</style>
+</head>
+<body>
+<header class="site-header"><div id="site-nav"></div></header>
+
+<div class="page-header">
+  <h1>Attendee Directory</h1>
+  <p class="tagline">Find fellow attendees who've opted in to be discoverable.</p>
+</div>
+
+<div class="directory-search-bar">
+  <input type="search" id="directory-search" placeholder="Search by name or company…" aria-label="Search attendees">
+</div>
+
+<div class="container">
+  <div class="directory-grid" id="directory-grid">
+    <div class="card skeleton skeleton-attendee-card"></div>
+    <div class="card skeleton skeleton-attendee-card"></div>
+    <div class="card skeleton skeleton-attendee-card"></div>
+    <div class="card skeleton skeleton-attendee-card"></div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/directory.js"></script>
+</body>
+</html>

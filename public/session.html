@@ -6,6 +6,41 @@
 <title>Session — StartFEST 2026</title>
 <link rel="stylesheet" href="/css/styles.css">
 <link rel="stylesheet" href="/css/pages.css">
+<style>
+  /* Live Session Notes (scoped to this page — see public/js/recorder.js) */
+  .rec-live { display: flex; align-items: center; gap: 6px; font-size: 15px; }
+  .rec-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--danger);
+  }
+  .rec-dot--live { animation: rec-pulse 1.4s ease-in-out infinite; }
+  @keyframes rec-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(224, 69, 60, 0.45); }
+    50% { opacity: 0.55; box-shadow: 0 0 0 6px rgba(224, 69, 60, 0); }
+  }
+  .rec-sync { margin-top: 6px; }
+  .rec-subhead { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); margin: 14px 0 4px; }
+  .rec-transcript { margin-top: 14px; }
+  .rec-transcript summary { cursor: pointer; font-weight: 700; color: var(--ink); }
+  .rec-transcript pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-top: 8px;
+    background: rgba(18, 49, 79, 0.05);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-size: 13px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .rec-locked { opacity: 0.75; }
+  /* Note: prefers-reduced-motion already disables all animation-duration
+     globally in styles.css, so .rec-dot--live's pulse is covered by that
+     existing rule — no separate override needed here. */
+</style>
 </head>
 <body>
 <header class="site-header"><div id="site-nav"></div></header>
@@ -17,6 +52,7 @@
 <script src="/js/app.js"></script>
 <script src="/js/session-actions.js"></script>
 <script src="/js/session-card.js"></script>
+<script src="/js/recorder.js"></script>
 <script src="/js/session.js"></script>
 </body>
 </html>

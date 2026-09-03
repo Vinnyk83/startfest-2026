@@ -130,11 +130,121 @@ CREATE TABLE IF NOT EXISTS conference_settings (
   footer_note text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ===== Day 2 additions: profiles/magic-link, chat, live session notes =====
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_user_id uuid UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS twitter_url text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS website_url text;
+
+CREATE TABLE IF NOT EXISTS chat_rooms (
+  id text PRIMARY KEY,
+  kind text NOT NULL DEFAULT 'session',
+  session_id text REFERENCES sessions(id) ON DELETE CASCADE,
+  name text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id uuid PRIMARY KEY,
+  room_id text NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_room_created ON chat_messages (room_id, created_at);
+CREATE TABLE IF NOT EXISTS chat_read_state (
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  room_id text NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  last_read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, room_id)
+);
+
+CREATE TABLE IF NOT EXISTS session_recordings (
+  id uuid PRIMARY KEY,
+  session_id text NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  started_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  status text NOT NULL DEFAULT 'recording',
+  started_at timestamptz NOT NULL DEFAULT now(),
+  ended_at timestamptz,
+  transcript text,
+  summary text,
+  action_items jsonb,
+  shared boolean NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS idx_session_recordings_session ON session_recordings (session_id);
+CREATE TABLE IF NOT EXISTS recording_chunks (
+  id uuid PRIMARY KEY,
+  recording_id uuid NOT NULL REFERENCES session_recordings(id) ON DELETE CASCADE,
+  seq int NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  transcript text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (recording_id, seq)
+);
+`;
+
+// Storage bucket + RLS + Realtime publication — Supabase-specific, safe to
+// re-run. Chat/recordings are treated as fully public within the conference
+// (no DMs, no private rooms), so read access is open to any Realtime
+// subscriber; all writes still go through our own backend (which connects
+// as the `postgres` role and bypasses RLS), so these policies only govern
+// what the browser can read directly via Supabase Realtime/Storage.
+const SUPABASE_EXTRAS_SQL = `
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('avatars', 'avatars', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Avatar public read" ON storage.objects;
+CREATE POLICY "Avatar public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "Avatar upload by owner" ON storage.objects;
+CREATE POLICY "Avatar upload by owner" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Avatar update by owner" ON storage.objects;
+CREATE POLICY "Avatar update by owner" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Chat rooms public read" ON chat_rooms;
+CREATE POLICY "Chat rooms public read" ON chat_rooms FOR SELECT USING (true);
+
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Chat messages public read" ON chat_messages;
+CREATE POLICY "Chat messages public read" ON chat_messages FOR SELECT USING (true);
+
+ALTER TABLE session_recordings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Recordings public read" ON session_recordings;
+CREATE POLICY "Recordings public read" ON session_recordings FOR SELECT USING (true);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'chat_messages'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'session_recordings'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE session_recordings;
+  END IF;
+END $$;
 `;
 
 async function main() {
   console.log('Creating tables (if not present)...');
   await q(SCHEMA);
+
+  console.log('Setting up Storage bucket, RLS policies, and Realtime publication...');
+  try {
+    await q(SUPABASE_EXTRAS_SQL);
+  } catch (err) {
+    console.warn('  Skipped Supabase-specific setup (fine on non-Supabase Postgres):', err.message);
+  }
 
   const day1Date = process.env.CONFERENCE_START_DATE || addDays(new Date().toISOString().slice(0, 10), 1);
   const day2Date = addDays(day1Date, 1);
@@ -204,6 +314,19 @@ async function main() {
         [sIn.slug, speakerSlugs[i].slug, i, speakerSlugs[i].roleLabel || null]
       );
     }
+  }
+
+  console.log('Seeding chat rooms (lounge + one per session)...');
+  await q(
+    `INSERT INTO chat_rooms (id, kind, session_id, name) VALUES ('lounge','lounge',NULL,'Conference Lounge')
+     ON CONFLICT (id) DO NOTHING`
+  );
+  for (const sIn of seed.sessions) {
+    await q(
+      `INSERT INTO chat_rooms (id, kind, session_id, name) VALUES ($1,'session',$1,$2)
+       ON CONFLICT (id) DO UPDATE SET name = $2`,
+      [sIn.slug, sIn.title]
+    );
   }
 
   console.log(`Seeding ${seed.users.length} users (skipped if they already exist)...`);

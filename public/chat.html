@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat — StartFEST 2026</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/pages.css">
+</head>
+<body class="chat-page">
+<header class="site-header"><div id="site-nav"></div></header>
+
+<div class="chat-shell">
+  <aside class="chat-rooms" id="chat-rooms-pane">
+    <div class="chat-rooms-header"><h2>Chat</h2></div>
+    <div id="room-list" class="room-list">
+      <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
+      <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
+      <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
+      <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
+      <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
+    </div>
+  </aside>
+
+  <section class="chat-room" id="chat-room-pane">
+    <div id="chat-room-empty">
+      <p>Select a room to start chatting.</p>
+    </div>
+    <div id="chat-room-active" class="chat-room-active" hidden>
+      <div class="chat-room-topbar">
+        <button type="button" class="btn btn--ghost btn--sm chat-back-btn" id="chat-back-btn">&larr; Rooms</button>
+        <h2 id="chat-room-title">&nbsp;</h2>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-load-older" id="chat-load-older" hidden>
+          <button type="button" class="btn btn--outline btn--sm" id="load-older-btn">Load older messages</button>
+        </div>
+        <div id="chat-messages-list"></div>
+      </div>
+      <div class="chat-composer" id="chat-composer"></div>
+    </div>
+  </section>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/chat.js"></script>
+</body>
+</html>

@@ -169,14 +169,45 @@
       <nav class="nav-links">
         ${link('/', 'Agenda')}
         ${link('/speakers', 'Speakers')}
+        ${link('/directory', 'Directory')}
+        ${link('/trending', 'Trending')}
+        ${link('/chat', 'Chat')}
         ${right}
       </nav>`;
     const logoutBtn = document.getElementById('nav-logout');
     if (logoutBtn) logoutBtn.addEventListener('click', logout);
   }
 
+  // Lazily loads the Supabase JS SDK from CDN and returns a cached client,
+  // configured from /api/public-config (publishable key only — safe to
+  // expose). Used for magic-link auth, avatar Storage uploads, and Realtime
+  // chat/presence subscriptions.
+  let supabasePromise = null;
+  function getSupabaseClient() {
+    if (!supabasePromise) {
+      supabasePromise = (async () => {
+        const config = await fetchJson('/api/public-config');
+        if (!config.supabaseUrl || !config.supabasePublishableKey) {
+          throw new Error('Supabase is not configured on this server.');
+        }
+        if (!window.supabase) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Failed to load Supabase SDK'));
+            document.head.appendChild(script);
+          });
+        }
+        return window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey);
+      })();
+    }
+    return supabasePromise;
+  }
+
   window.App = {
     fetchJson,
+    getSupabaseClient,
     toast,
     formatTime,
     formatTimeRange,

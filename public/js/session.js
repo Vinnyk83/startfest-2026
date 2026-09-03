@@ -96,6 +96,10 @@
           <h2>Calendar</h2>
           ${renderCalendarActions(session)}
         </div>
+        <div class="detail-section">
+          <h2>Live Session Notes</h2>
+          <div id="live-notes-root"></div>
+        </div>
       </div>`;
     const container = document.getElementById('page-content');
     container.innerHTML = html;
@@ -104,6 +108,7 @@
       onChange: load,
       requireAuthRedirect: location.pathname,
     });
+    Recorder.init(slug, authed);
   }
 
   async function load() {

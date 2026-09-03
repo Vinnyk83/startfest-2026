@@ -39,9 +39,48 @@
     }
   }
 
+  function showMagicLinkError(msg) {
+    const el = document.getElementById('magic-link-error');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  async function onMagicLinkSubmit(e) {
+    e.preventDefault();
+    showMagicLinkError('');
+    const email = document.getElementById('magic-email').value.trim();
+    if (!email) {
+      showMagicLinkError('Enter your email address.');
+      return;
+    }
+    const btn = document.getElementById('magic-link-btn');
+    btn.disabled = true;
+    try {
+      const sb = await App.getSupabaseClient();
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.origin + '/auth/callback' },
+      });
+      if (error) {
+        App.toast(error.message, 'error');
+        btn.disabled = false;
+        return;
+      }
+      const form = document.getElementById('magic-link-form');
+      form.style.display = 'none';
+      const sent = document.getElementById('magic-link-sent');
+      sent.textContent = `Check your email — we sent a sign-in link to ${email}.`;
+      sent.style.display = 'block';
+    } catch (err) {
+      App.toast(err.message || "Couldn't send the sign-in link.", 'error');
+      btn.disabled = false;
+    }
+  }
+
   async function init() {
     App.renderNav('/login');
     document.getElementById('login-form').addEventListener('submit', onSubmit);
+    document.getElementById('magic-link-form').addEventListener('submit', onMagicLinkSubmit);
   }
 
   init();

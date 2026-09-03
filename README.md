@@ -113,7 +113,46 @@ This was built fast and deliberately scoped down from a maximal version:
   viewer's local time), just a smaller file.
 - **No email** — matches the original spec's decision; password auth only.
 
-## 7. Before you tell attendees the URL
+## 7. Day 2 additions: profiles, chat, live notes, directory
+
+Built on top of the same Supabase project as the database — Auth (magic
+link), Storage (avatar photos), and Realtime (live chat) are all part of it,
+so no extra services beyond Deepgram (transcription) and optionally xAI/Grok
+(summaries) were needed.
+
+- **Magic-link sign-in** — on `/login`, attendees can enter just their email
+  and get a one-click sign-in link (no password). The existing username/
+  password login is untouched and still how the admin account signs in.
+  Requires `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` / `SUPABASE_SECRET_KEY`.
+- **Profile photos + social links** — `/profile` supports uploading a photo
+  (stored in a public `avatars` Supabase Storage bucket, RLS-restricted so
+  each signed-in user can only write their own) and LinkedIn/X/website links.
+  Photo upload requires an active Supabase session, so it only works for
+  accounts that have signed in via magic link at least once — the profile
+  page explains this plainly rather than failing silently for other accounts.
+- **Chat** — `/chat`: a general "Conference Lounge" plus one room per
+  session, live via Supabase Realtime with a polling backstop, unread badges
+  per room. Anyone can read; posting requires being signed in.
+- **Live session notes** — on each session's detail page, any signed-in
+  attendee can start a recording. Audio is captured in ~10s chunks and sent
+  to Deepgram (`DEEPGRAM_API_KEY`, model `nova-3`) for transcription with
+  speaker diarization. Stopping a recording generates a summary + action
+  items via Grok/xAI (`XAI_API_KEY`) — without that key set, the transcript
+  is still saved and shown, just without a generated summary. A finished
+  recording can be shared, which posts its summary directly into that
+  session's chat room. **Honesty note on "works offline"**: there is no
+  Background Sync here on purpose — iOS Safari doesn't support it at all, so
+  a promise of silent background upload after closing the tab would be false
+  advertising for a large fraction of attendees. What's actually built:
+  local recording + an in-page retry queue that keeps trying while the tab
+  stays open, with an honest "N chunks pending" status always visible.
+- **Attendee directory + trending** — `/directory` lists everyone with
+  `shareAttendance` on, with photo/bio/socials, searchable. `/trending`
+  ranks sessions by recent registration growth (not live in-room headcount —
+  that would need a bigger Realtime Presence build; this is the honest,
+  shippable version of "trending").
+
+## 8. Before you tell attendees the URL
 
 1. Confirm `CONFERENCE_START_DATE` is right, then run `npm run setup` again
    if you changed it (safe — see idempotency note above).

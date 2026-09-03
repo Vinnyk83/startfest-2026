@@ -12,6 +12,19 @@
 
 <div class="card form-card" style="max-width:520px;">
   <h1>Your profile</h1>
+
+  <div class="field" id="avatar-field">
+    <label>Photo</label>
+    <div class="avatar-upload-row">
+      <div id="avatar-preview"></div>
+      <div class="avatar-upload-controls">
+        <button type="button" class="btn btn--outline btn--sm" id="change-photo-btn">Change photo</button>
+        <input type="file" id="avatar-file-input" accept="image/*" style="display:none;">
+        <p class="help-text" id="avatar-help" style="display:none;"></p>
+      </div>
+    </div>
+  </div>
+
   <form id="profile-form" novalidate>
     <div class="field">
       <label for="fullName">Full name</label>
@@ -33,6 +46,17 @@
     <div class="field">
       <label for="linkedinUrl">LinkedIn URL</label>
       <input type="url" id="linkedinUrl" name="linkedinUrl" placeholder="https://linkedin.com/in/…">
+      <p class="help-text" id="linkedinUrl-hint" style="display:none;">Doesn't look like a full URL (starting with http:// or https://) — it'll still be saved as-is.</p>
+    </div>
+    <div class="field">
+      <label for="twitterUrl">X / Twitter</label>
+      <input type="url" id="twitterUrl" name="twitterUrl" placeholder="https://x.com/…">
+      <p class="help-text" id="twitterUrl-hint" style="display:none;">Doesn't look like a full URL (starting with http:// or https://) — it'll still be saved as-is.</p>
+    </div>
+    <div class="field">
+      <label for="websiteUrl">Personal website</label>
+      <input type="url" id="websiteUrl" name="websiteUrl" placeholder="https://…">
+      <p class="help-text" id="websiteUrl-hint" style="display:none;">Doesn't look like a full URL (starting with http:// or https://) — it'll still be saved as-is.</p>
     </div>
     <div class="field">
       <label>Avatar color</label>

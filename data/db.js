@@ -260,8 +260,9 @@ async function createUser(fields) {
 async function updateUser(id, fields) {
   const map = {
     fullName: 'full_name', jobTitle: 'job_title', company: 'company', bio: 'bio',
-    avatarColor: 'avatar_color', linkedinUrl: 'linkedin_url', shareAttendance: 'share_attendance',
-    role: 'role', isActive: 'is_active', email: 'email', username: 'username',
+    avatarColor: 'avatar_color', linkedinUrl: 'linkedin_url', twitterUrl: 'twitter_url',
+    websiteUrl: 'website_url', avatarUrl: 'avatar_url', shareAttendance: 'share_attendance',
+    role: 'role', isActive: 'is_active', email: 'email', username: 'username', authUserId: 'auth_user_id',
   };
   const sets = [];
   const params = [];
@@ -626,10 +627,236 @@ function mapUser(r) {
   return {
     id: r.id, email: r.email, username: r.username, passwordHash: r.password_hash, fullName: r.full_name,
     jobTitle: r.job_title, company: r.company, bio: r.bio, avatarColor: r.avatar_color,
-    linkedinUrl: r.linkedin_url, role: r.role, shareAttendance: r.share_attendance, isActive: r.is_active,
+    linkedinUrl: r.linkedin_url, twitterUrl: r.twitter_url, websiteUrl: r.website_url,
+    avatarUrl: r.avatar_url, authUserId: r.auth_user_id,
+    role: r.role, shareAttendance: r.share_attendance, isActive: r.is_active,
     feedToken: r.feed_token, lastLoginAt: r.last_login_at, createdAt: r.created_at,
   };
 }
+// ---------- magic-link attendees ----------
+async function getUserByAuthUserId(authUserId) {
+  const { rows } = await q('SELECT * FROM users WHERE auth_user_id = $1', [authUserId]);
+  return rows[0] ? mapUser(rows[0]) : null;
+}
+
+async function createOrGetAttendeeByAuthUser({ email, authUserId, fullName }) {
+  let user = await getUserByAuthUserId(authUserId);
+  if (user) return user;
+  const existing = await getUserByEmailOrUsername(email);
+  if (existing) {
+    await q('UPDATE users SET auth_user_id = $1 WHERE id = $2', [authUserId, existing.id]);
+    return getUserById(existing.id);
+  }
+  const id = newId();
+  await q(
+    `INSERT INTO users (id, email, password_hash, full_name, avatar_color, role, share_attendance, is_active, feed_token, auth_user_id)
+     VALUES ($1,$2,$3,$4,$5,'attendee',true,true,$6,$7)`,
+    [id, email, hashPassword(newToken()), fullName || email.split('@')[0], '#C4E538', newToken(), authUserId]
+  );
+  return getUserById(id);
+}
+
+// ---------- chat ----------
+async function listChatRooms() {
+  const { rows } = await q(
+    `SELECT r.*, s.title AS session_title, d.day_number
+     FROM chat_rooms r LEFT JOIN sessions s ON s.id = r.session_id LEFT JOIN conference_days d ON d.id = s.day_id
+     ORDER BY (r.kind = 'lounge') DESC, s.starts_at NULLS LAST`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    sessionId: r.session_id,
+    name: r.name || r.session_title,
+    dayNumber: r.day_number,
+  }));
+}
+
+async function getChatRoom(roomId) {
+  const { rows } = await q('SELECT * FROM chat_rooms WHERE id = $1', [roomId]);
+  return rows[0] || null;
+}
+
+async function listChatMessages(roomId, { before, limit = 50 } = {}) {
+  const params = [roomId];
+  let where = 'room_id = $1';
+  if (before) {
+    params.push(before);
+    where += ` AND created_at < $${params.length}`;
+  }
+  params.push(limit);
+  const { rows } = await q(
+    `SELECT m.*, u.full_name, u.avatar_color, u.avatar_url FROM chat_messages m
+     JOIN users u ON u.id = m.user_id WHERE ${where}
+     ORDER BY created_at DESC LIMIT $${params.length}`,
+    params
+  );
+  return rows
+    .map((r) => ({
+      id: r.id,
+      roomId: r.room_id,
+      userId: r.user_id,
+      fullName: r.full_name,
+      avatarColor: r.avatar_color,
+      avatarUrl: r.avatar_url,
+      body: r.body,
+      createdAt: r.created_at,
+    }))
+    .reverse();
+}
+
+async function postChatMessage(roomId, userId, body) {
+  const id = newId();
+  await q('INSERT INTO chat_messages (id, room_id, user_id, body) VALUES ($1,$2,$3,$4)', [id, roomId, userId, body]);
+  const { rows } = await q(
+    `SELECT m.*, u.full_name, u.avatar_color, u.avatar_url FROM chat_messages m JOIN users u ON u.id = m.user_id WHERE m.id = $1`,
+    [id]
+  );
+  const r = rows[0];
+  return {
+    id: r.id, roomId: r.room_id, userId: r.user_id, fullName: r.full_name,
+    avatarColor: r.avatar_color, avatarUrl: r.avatar_url, body: r.body, createdAt: r.created_at,
+  };
+}
+
+async function markRoomRead(userId, roomId) {
+  await q(
+    `INSERT INTO chat_read_state (user_id, room_id, last_read_at) VALUES ($1,$2, now())
+     ON CONFLICT (user_id, room_id) DO UPDATE SET last_read_at = now()`,
+    [userId, roomId]
+  );
+}
+
+async function unreadCountsForUser(userId) {
+  const { rows } = await q(
+    `SELECT r.id AS room_id, COUNT(m.id)::int AS unread
+     FROM chat_rooms r
+     LEFT JOIN chat_read_state rs ON rs.room_id = r.id AND rs.user_id = $1
+     LEFT JOIN chat_messages m ON m.room_id = r.id AND m.created_at > COALESCE(rs.last_read_at, 'epoch')
+     GROUP BY r.id`,
+    [userId]
+  );
+  return Object.fromEntries(rows.map((r) => [r.room_id, r.unread]));
+}
+
+// ---------- directory + trending ----------
+async function listDirectory({ q: search } = {}) {
+  const params = [];
+  let where = "is_active AND share_attendance";
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`);
+    where += ` AND (LOWER(full_name) LIKE $${params.length} OR LOWER(COALESCE(company,'')) LIKE $${params.length})`;
+  }
+  const { rows } = await q(
+    `SELECT id, full_name, job_title, company, bio, avatar_color, avatar_url, linkedin_url, twitter_url, website_url
+     FROM users WHERE ${where} ORDER BY full_name`,
+    params
+  );
+  return rows.map((u) => ({
+    id: u.id, fullName: u.full_name, jobTitle: u.job_title, company: u.company, bio: u.bio,
+    avatarColor: u.avatar_color, avatarUrl: u.avatar_url, linkedinUrl: u.linkedin_url,
+    twitterUrl: u.twitter_url, websiteUrl: u.website_url,
+  }));
+}
+
+async function trendingSessions({ minutes = 20, limit = 8 } = {}) {
+  const { rows } = await q(
+    `SELECT s.id, s.slug, s.title, s.starts_at, s.ends_at, r.name AS room_name,
+       COUNT(reg.id)::int AS recent_registrations,
+       (SELECT COUNT(*)::int FROM registrations WHERE session_id = s.id AND status = 'going') AS total_registrations
+     FROM sessions s
+     LEFT JOIN rooms r ON r.id = s.room_id
+     LEFT JOIN registrations reg ON reg.session_id = s.id AND reg.status = 'going'
+       AND reg.created_at > now() - ($1 || ' minutes')::interval
+     WHERE s.is_published AND s.ends_at > now()
+     GROUP BY s.id, r.name
+     ORDER BY recent_registrations DESC, total_registrations DESC
+     LIMIT $2`,
+    [minutes, limit]
+  );
+  return rows.map((r) => ({
+    id: r.id, slug: r.slug, title: r.title, startsAt: r.starts_at, endsAt: r.ends_at,
+    roomName: r.room_name, recentRegistrations: r.recent_registrations, totalRegistrations: r.total_registrations,
+  }));
+}
+
+// ---------- live session notes ----------
+async function createRecording(sessionId, startedBy) {
+  const id = newId();
+  await q(
+    'INSERT INTO session_recordings (id, session_id, started_by, status) VALUES ($1,$2,$3,\'recording\')',
+    [id, sessionId, startedBy]
+  );
+  return getRecording(id);
+}
+
+async function getRecording(id) {
+  const { rows } = await q('SELECT * FROM session_recordings WHERE id = $1', [id]);
+  return rows[0] ? mapRecording(rows[0]) : null;
+}
+
+async function activeRecordingForSession(sessionId) {
+  const { rows } = await q(
+    `SELECT * FROM session_recordings WHERE session_id = $1 AND status = 'recording' ORDER BY started_at DESC LIMIT 1`,
+    [sessionId]
+  );
+  return rows[0] ? mapRecording(rows[0]) : null;
+}
+
+async function latestRecordingForSession(sessionId) {
+  const { rows } = await q(
+    `SELECT * FROM session_recordings WHERE session_id = $1 ORDER BY started_at DESC LIMIT 1`,
+    [sessionId]
+  );
+  return rows[0] ? mapRecording(rows[0]) : null;
+}
+
+async function addRecordingChunk(recordingId, seq) {
+  const id = newId();
+  await q(
+    `INSERT INTO recording_chunks (id, recording_id, seq, status) VALUES ($1,$2,$3,'pending')
+     ON CONFLICT (recording_id, seq) DO NOTHING`,
+    [id, recordingId, seq]
+  );
+  const { rows } = await q('SELECT * FROM recording_chunks WHERE recording_id = $1 AND seq = $2', [recordingId, seq]);
+  return rows[0];
+}
+
+async function setChunkTranscript(chunkId, transcript, status = 'transcribed') {
+  await q('UPDATE recording_chunks SET transcript = $1, status = $2 WHERE id = $3', [transcript, status, chunkId]);
+}
+
+async function finalizeRecording(id, { transcript, summary, actionItems }) {
+  await q(
+    `UPDATE session_recordings SET status = 'complete', ended_at = now(), transcript = $1, summary = $2, action_items = $3 WHERE id = $4`,
+    [transcript, summary, JSON.stringify(actionItems || []), id]
+  );
+  return getRecording(id);
+}
+
+async function stopRecording(id) {
+  await q(`UPDATE session_recordings SET status = 'processing', ended_at = now() WHERE id = $1`, [id]);
+  return getRecording(id);
+}
+
+async function shareRecording(id, shared) {
+  await q('UPDATE session_recordings SET shared = $1 WHERE id = $2', [shared, id]);
+  return getRecording(id);
+}
+
+async function listChunksForRecording(id) {
+  const { rows } = await q('SELECT * FROM recording_chunks WHERE recording_id = $1 ORDER BY seq', [id]);
+  return rows;
+}
+
+function mapRecording(r) {
+  return {
+    id: r.id, sessionId: r.session_id, startedBy: r.started_by, status: r.status,
+    startedAt: r.started_at, endedAt: r.ended_at, transcript: r.transcript,
+    summary: r.summary, actionItems: r.action_items, shared: r.shared,
+  };
+}
+
 function mapSettings(r) {
   return {
     id: r.id, name: r.name, presenter: r.presenter, tagline: r.tagline, dateRangeLabel: r.date_range_label,
@@ -649,4 +876,9 @@ module.exports = {
   createAuthSession, getUserByToken, deleteAuthSessionByToken,
   addRegistration, removeRegistration, findOverlaps, scheduleForUser, ConflictError,
   getSettings, updateSettings, adminStats, exportRegistrationsCsv, slugify,
+  getUserByAuthUserId, createOrGetAttendeeByAuthUser,
+  listChatRooms, getChatRoom, listChatMessages, postChatMessage, markRoomRead, unreadCountsForUser,
+  listDirectory, trendingSessions,
+  createRecording, getRecording, activeRecordingForSession, latestRecordingForSession, addRecordingChunk, setChunkTranscript,
+  finalizeRecording, stopRecording, shareRecording, listChunksForRecording,
 };

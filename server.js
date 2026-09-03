@@ -3,13 +3,18 @@ require('./lib/env').loadEnv();
 const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const multer = require('multer');
 const db = require('./data/db');
 const { verifyPassword } = require('./lib/auth');
 const { buildEvent, buildCalendar } = require('./lib/ics');
+const { verifySupabaseAccessToken } = require('./lib/supabase');
+const { transcribeChunk } = require('./lib/deepgram');
+const { summarizeTranscript } = require('./lib/summarize');
 
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 
 app.use(express.json());
 app.use(cookieParser());
@@ -131,6 +136,16 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 // ===================== PUBLIC / ATTENDEE =====================
+// Publishable-key-only config for the browser's Supabase client (magic-link
+// auth, avatar storage upload, realtime chat/presence). Safe to expose —
+// the publishable key has no privileged access without RLS-granted policies.
+app.get('/api/public-config', (req, res) => {
+  res.json({
+    supabaseUrl: process.env.SUPABASE_URL || null,
+    supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || null,
+  });
+});
+
 app.get(
   '/api/settings',
   ah(async (req, res) => {
@@ -201,7 +216,10 @@ app.patch(
   '/api/me',
   requireAuth,
   ah(async (req, res) => {
-    const allowed = ['fullName', 'jobTitle', 'company', 'bio', 'avatarColor', 'shareAttendance', 'linkedinUrl'];
+    const allowed = [
+      'fullName', 'jobTitle', 'company', 'bio', 'avatarColor', 'shareAttendance',
+      'linkedinUrl', 'twitterUrl', 'websiteUrl', 'avatarUrl',
+    ];
     const fields = {};
     for (const k of allowed) if (req.body[k] !== undefined) fields[k] = req.body[k];
     if (fields.bio && fields.bio.length > 500) {
@@ -321,6 +339,209 @@ app.get(
     const ics = buildCalendar({ calname: 'StartFEST — My Schedule', events, method: 'PUBLISH' });
     res.set('Content-Type', 'text/calendar; charset=utf-8');
     res.send(ics);
+  })
+);
+
+// ===================== MAGIC LINK SYNC =====================
+// The browser talks to Supabase directly to send/verify the magic-link email
+// (via the publishable key). Once Supabase confirms the click, the browser
+// hands us the resulting access token here; we verify it server-side and
+// mint our OWN session cookie exactly as the password-login flow does — so
+// every existing authenticated route keeps working unchanged.
+app.post(
+  '/api/auth/sync',
+  ah(async (req, res) => {
+    const { access_token } = req.body || {};
+    if (!access_token) return res.status(400).json({ error: 'VALIDATION', fields: { access_token: 'required' } });
+    const supaUser = await verifySupabaseAccessToken(access_token);
+    if (!supaUser || !supaUser.email) return res.status(401).json({ error: 'INVALID_TOKEN' });
+    const user = await db.createOrGetAttendeeByAuthUser({
+      email: supaUser.email,
+      authUserId: supaUser.id,
+      fullName: supaUser.user_metadata && supaUser.user_metadata.full_name,
+    });
+    if (!user.isActive) return res.status(403).json({ error: 'FORBIDDEN', message: 'This account has been deactivated.' });
+    const token = await db.createAuthSession(user.id, req.headers['user-agent']);
+    setSessionCookie(res, token);
+    await db.touchLogin(user.id);
+    res.json({ user: sanitizeUser(user) });
+  })
+);
+
+// ===================== CHAT =====================
+app.get(
+  '/api/chat/rooms',
+  ah(async (req, res) => {
+    const rooms = await db.listChatRooms();
+    const unread = req.user ? await db.unreadCountsForUser(req.user.id) : {};
+    res.json(rooms.map((r) => ({ ...r, unread: unread[r.id] || 0 })));
+  })
+);
+
+app.get(
+  '/api/chat/rooms/:roomId/messages',
+  ah(async (req, res) => {
+    const room = await db.getChatRoom(req.params.roomId);
+    if (!room) return res.status(404).json({ error: 'NOT_FOUND' });
+    const messages = await db.listChatMessages(req.params.roomId, {
+      before: req.query.before,
+      limit: req.query.limit ? Number(req.query.limit) : 50,
+    });
+    res.json({ messages });
+  })
+);
+
+app.post(
+  '/api/chat/rooms/:roomId/messages',
+  requireAuth,
+  ah(async (req, res) => {
+    const room = await db.getChatRoom(req.params.roomId);
+    if (!room) return res.status(404).json({ error: 'NOT_FOUND' });
+    const body = ((req.body && req.body.body) || '').trim();
+    if (!body) return res.status(400).json({ error: 'VALIDATION', fields: { body: 'required' } });
+    if (body.length > 1000) return res.status(400).json({ error: 'VALIDATION', fields: { body: 'max 1000 characters' } });
+    const message = await db.postChatMessage(req.params.roomId, req.user.id, body);
+    res.status(201).json(message);
+  })
+);
+
+app.post(
+  '/api/chat/rooms/:roomId/read',
+  requireAuth,
+  ah(async (req, res) => {
+    await db.markRoomRead(req.user.id, req.params.roomId);
+    res.status(204).end();
+  })
+);
+
+// ===================== DIRECTORY + TRENDING =====================
+app.get(
+  '/api/directory',
+  ah(async (req, res) => {
+    res.json(await db.listDirectory({ q: req.query.q }));
+  })
+);
+
+app.get(
+  '/api/trending',
+  ah(async (req, res) => {
+    res.json(await db.trendingSessions());
+  })
+);
+
+// ===================== LIVE SESSION NOTES =====================
+app.get(
+  '/api/sessions/:slug/recordings/active',
+  ah(async (req, res) => {
+    const session = await db.getSessionBySlug(req.params.slug);
+    if (!session) return res.status(404).json({ error: 'NOT_FOUND' });
+    res.json({ recording: await db.activeRecordingForSession(session.id) });
+  })
+);
+
+// Most recent recording regardless of status — lets the page show a
+// finished summary after a reload, not just while a tab was kept open
+// through the whole recording→processing→complete lifecycle.
+app.get(
+  '/api/sessions/:slug/recordings/latest',
+  ah(async (req, res) => {
+    const session = await db.getSessionBySlug(req.params.slug);
+    if (!session) return res.status(404).json({ error: 'NOT_FOUND' });
+    res.json({ recording: await db.latestRecordingForSession(session.id) });
+  })
+);
+
+app.post(
+  '/api/sessions/:slug/recordings',
+  requireAuth,
+  ah(async (req, res) => {
+    const session = await db.getSessionBySlug(req.params.slug);
+    if (!session) return res.status(404).json({ error: 'NOT_FOUND' });
+    const existing = await db.activeRecordingForSession(session.id);
+    if (existing) return res.status(200).json(existing);
+    const recording = await db.createRecording(session.id, req.user.id);
+    res.status(201).json(recording);
+  })
+);
+
+app.post(
+  '/api/recordings/:id/chunks',
+  requireAuth,
+  upload.single('audio'),
+  ah(async (req, res) => {
+    const recording = await db.getRecording(req.params.id);
+    if (!recording) return res.status(404).json({ error: 'NOT_FOUND' });
+    if (recording.status !== 'recording') return res.status(400).json({ error: 'NOT_RECORDING' });
+    const seq = Number(req.body.seq);
+    if (!req.file || Number.isNaN(seq)) {
+      return res.status(400).json({ error: 'VALIDATION', fields: { seq: 'required', audio: 'required' } });
+    }
+    const chunk = await db.addRecordingChunk(recording.id, seq);
+    try {
+      const transcript = await transcribeChunk(req.file.buffer, req.file.mimetype);
+      await db.setChunkTranscript(chunk.id, transcript, 'transcribed');
+      res.status(201).json({ chunkId: chunk.id, status: 'transcribed' });
+    } catch (err) {
+      await db.setChunkTranscript(chunk.id, null, 'failed');
+      if (err.code === 'DEEPGRAM_NOT_CONFIGURED') {
+        return res.status(503).json({ error: 'DEEPGRAM_NOT_CONFIGURED', message: 'Transcription is not configured yet.' });
+      }
+      res.status(502).json({ error: 'TRANSCRIBE_FAILED', message: 'Could not transcribe this chunk — it will be retried.' });
+    }
+  })
+);
+
+app.post(
+  '/api/recordings/:id/stop',
+  requireAuth,
+  ah(async (req, res) => {
+    const recording = await db.getRecording(req.params.id);
+    if (!recording) return res.status(404).json({ error: 'NOT_FOUND' });
+    await db.stopRecording(recording.id);
+    const chunks = await db.listChunksForRecording(recording.id);
+    const transcript = chunks
+      .filter((c) => c.status === 'transcribed' && c.transcript)
+      .map((c) => c.transcript)
+      .join('\n');
+    let summary = '';
+    let actionItems = [];
+    try {
+      const result = await summarizeTranscript(transcript || '(no speech was transcribed)');
+      summary = result.summary;
+      actionItems = result.actionItems;
+    } catch (err) {
+      summary = 'Summary generation failed — the transcript below is still available.';
+    }
+    const finalRecording = await db.finalizeRecording(recording.id, { transcript, summary, actionItems });
+    res.json(finalRecording);
+  })
+);
+
+app.get(
+  '/api/recordings/:id',
+  ah(async (req, res) => {
+    const recording = await db.getRecording(req.params.id);
+    if (!recording) return res.status(404).json({ error: 'NOT_FOUND' });
+    res.json(recording);
+  })
+);
+
+app.patch(
+  '/api/recordings/:id/share',
+  requireAuth,
+  ah(async (req, res) => {
+    const recording = await db.getRecording(req.params.id);
+    if (!recording) return res.status(404).json({ error: 'NOT_FOUND' });
+    const updated = await db.shareRecording(recording.id, !!req.body.shared);
+    if (req.body.shared && updated.summary) {
+      const session = await db.getSessionById(updated.sessionId);
+      if (session) {
+        const actionText = (updated.actionItems || []).map((a) => `- ${a}`).join('\n');
+        const body = `Session notes summary:\n${updated.summary}${actionText ? '\n\nAction items:\n' + actionText : ''}`;
+        await db.postChatMessage(session.id, req.user.id, body);
+      }
+    }
+    res.json(updated);
   })
 );
 
@@ -551,6 +772,11 @@ app.get('/my-schedule', (req, res) => res.sendFile(pub('my-schedule.html')));
 app.get('/speakers', (req, res) => res.sendFile(pub('speakers.html')));
 app.get('/speakers/:slug', (req, res) => res.sendFile(pub('speaker.html')));
 app.get('/session/:slug', (req, res) => res.sendFile(pub('session.html')));
+app.get('/auth/callback', (req, res) => res.sendFile(pub('auth-callback.html')));
+app.get('/chat', (req, res) => res.sendFile(pub('chat.html')));
+app.get('/chat/:roomId', (req, res) => res.sendFile(pub('chat.html')));
+app.get('/directory', (req, res) => res.sendFile(pub('directory.html')));
+app.get('/trending', (req, res) => res.sendFile(pub('trending.html')));
 
 // Admin pages — server-side gated. The API is the real security boundary
 // (requireAdminApi above); this just avoids exposing the shell UI to non-admins.
