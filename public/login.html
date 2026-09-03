@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — StartFEST 2026</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+<header class="site-header"><div id="site-nav"></div></header>
+
+<div class="card form-card">
+  <h1>Log in</h1>
+  <form id="login-form" novalidate>
+    <div class="field">
+      <label for="identifier">Email</label>
+      <input type="text" id="identifier" name="identifier" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+    <p class="error-text" id="form-error" style="display:none;"></p>
+    <button type="submit" class="btn btn--primary" id="submit-btn" style="width:100%;">Log in</button>
+  </form>
+  <p class="help-text" style="margin-top:16px;">Don't have an account? <a href="/register">Sign up</a></p>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/login.js"></script>
+</body>
+</html>

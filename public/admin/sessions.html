@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sessions – StartFEST Admin</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body class="light-shell">
+<div id="admin-shell">
+  <aside id="admin-sidebar"></aside>
+  <main class="admin-main">
+    <div class="admin-page-header">
+      <div>
+        <h1>Sessions</h1>
+        <p>Full agenda, including unpublished items. Amber rows have a room double-booking.</p>
+      </div>
+      <div class="admin-page-header-actions">
+        <button type="button" class="btn btn--primary" id="add-session-btn">Add session</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Title</th>
+            <th>Room</th>
+            <th>Track</th>
+            <th>Speakers</th>
+            <th>Regs</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="sessions-tbody">
+          <tr><td colspan="8" class="admin-loading">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+
+<script src="/js/app.js"></script>
+<script src="/admin/admin.js"></script>
+<script>
+(function () {
+  const SESSION_TYPES = ['ceremony', 'keynote', 'panel', 'mainstage', 'breakout', 'workshop', 'special', 'break'];
+  const tbody = document.getElementById('sessions-tbody');
+  const modalRoot = document.getElementById('modal-root');
+
+  let sessions = [];
+  let days = [];
+  let rooms = [];
+  let tracks = [];
+  let speakers = [];
+
+  async function boot() {
+    await AdminApp.init();
+    document.getElementById('add-session-btn').addEventListener('click', () => openForm(null));
+    await loadAll();
+  }
+
+  async function loadAll() {
+    tbody.innerHTML = '<tr><td colspan="8" class="admin-loading">Loading&hellip;</td></tr>';
+    try {
+      [sessions, days, rooms, tracks, speakers] = await Promise.all([
+        AdminApp.api('/api/admin/sessions'),
+        AdminApp.api('/api/admin/days'),
+        AdminApp.api('/api/admin/rooms'),
+        AdminApp.api('/api/admin/tracks'),
+        AdminApp.api('/api/admin/speakers'),
+      ]);
+      renderTable();
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="8" class="admin-empty">Failed to load sessions.</td></tr>';
+      App.toast(err.message || 'Failed to load sessions.', 'error');
+    }
+  }
+
+  async function reloadSessions() {
+    try {
+      sessions = await AdminApp.api('/api/admin/sessions');
+      renderTable();
+    } catch (err) {
+      App.toast(err.message || 'Failed to reload sessions.', 'error');
+    }
+  }
+
+  function renderTable() {
+    if (!sessions.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="admin-empty">No sessions yet.</td></tr>';
+      return;
+    }
+    const sortedDays = [...days].sort((a, b) => a.dayNumber - b.dayNumber);
+    let html = '';
+    sortedDays.forEach((day) => {
+      const daySessions = sessions
+        .filter((s) => s.dayId === day.id)
+        .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+      html += `<tr class="day-group-row"><td colspan="8">Day ${day.dayNumber} &mdash; ${App.escapeHtml(day.label || '')} (${App.escapeHtml(App.formatDayDate(day.date))})</td></tr>`;
+      if (!daySessions.length) {
+        html += `<tr><td colspan="8" class="admin-empty">No sessions on this day.</td></tr>`;
+      } else {
+        daySessions.forEach((s) => {
+          html += sessionRowHtml(s);
+        });
+      }
+    });
+    // Any sessions with a dayId that doesn't match a known day (shouldn't normally happen).
+    const knownDayIds = new Set(sortedDays.map((d) => d.id));
+    const orphaned = sessions.filter((s) => !knownDayIds.has(s.dayId));
+    if (orphaned.length) {
+      html += `<tr class="day-group-row"><td colspan="8">Unassigned day</td></tr>`;
+      orphaned.forEach((s) => { html += sessionRowHtml(s); });
+    }
+    tbody.innerHTML = html;
+
+    tbody.querySelectorAll('tr[data-session-id]').forEach((row) => {
+      const id = row.getAttribute('data-session-id');
+      const session = sessions.find((s) => s.id === id);
+      row.querySelector('[data-action="edit"]').addEventListener('click', () => openForm(session));
+      row.querySelector('[data-action="delete"]').addEventListener('click', () => deleteSession(session));
+    });
+  }
+
+  function sessionRowHtml(s) {
+    const trackPill = s.trackName
+      ? `<span class="badge track-pill" style="background:${App.escapeHtml(s.colorHex || '#eee')};color:${App.escapeHtml(s.textHex || '#12314F')}">${App.escapeHtml(s.trackName)}</span>`
+      : '&mdash;';
+    const speakerNames = (s.speakers || []).map((sp) => sp.fullName).join(', ') || '&mdash;';
+    const conflictAttr = s.hasRoomConflict ? `title="Room double-booked — see notes"` : '';
+    return `<tr class="${s.hasRoomConflict ? 'row--conflict' : ''}" data-session-id="${s.id}" ${conflictAttr}>
+      <td>${App.formatTimeRange(s.startsAt, s.endsAt)}</td>
+      <td>${App.escapeHtml(s.title)}</td>
+      <td>${App.escapeHtml(s.roomName || '—')}</td>
+      <td>${trackPill}</td>
+      <td>${speakerNames}</td>
+      <td>${s.attendeeCount}</td>
+      <td>
+        <span class="badge ${s.isPublished ? 'badge--ok' : 'badge--muted'}">${s.isPublished ? 'Published' : 'Draft'}</span>
+        <span class="badge ${s.isRegistrable ? 'badge--accent' : 'badge--muted'}">${s.isRegistrable ? 'Registrable' : 'Closed'}</span>
+      </td>
+      <td class="col-actions">
+        <div class="row-actions">
+          <button type="button" class="btn btn--outline btn--sm" data-action="edit">Edit</button>
+          <button type="button" class="btn btn--danger btn--sm" data-action="delete">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  async function deleteSession(session) {
+    if (!confirm(`Delete "${session.title}"? This cannot be undone.`)) return;
+    try {
+      await AdminApp.api(`/api/admin/sessions/${session.id}`, { method: 'DELETE' });
+      App.toast('Session deleted.', 'success');
+      reloadSessions();
+    } catch (err) {
+      if (err.status === 409 && err.data && err.data.error === 'HAS_REGISTRATIONS') {
+        const proceed = confirm(`${err.data.count} attendee(s) are registered for this session. Delete anyway?`);
+        if (!proceed) return;
+        try {
+          await AdminApp.api(`/api/admin/sessions/${session.id}?force=true`, { method: 'DELETE' });
+          App.toast('Session deleted.', 'success');
+          reloadSessions();
+        } catch (err2) {
+          App.toast(err2.message || 'Could not delete session.', 'error');
+        }
+      } else {
+        App.toast(err.message || 'Could not delete session.', 'error');
+      }
+    }
+  }
+
+  // ---------- add/edit form ----------
+  function closeModal() {
+    modalRoot.innerHTML = '';
+  }
+
+  function isoToLocalTimeInput(iso) {
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function dayDateLabel(dayId) {
+    const day = days.find((d) => d.id === dayId);
+    if (!day) return '';
+    return `Day ${day.dayNumber} &middot; ${App.escapeHtml(App.formatDayDate(day.date))}`;
+  }
+
+  function formHtml(session) {
+    const isEdit = !!session;
+    const v = (val) => App.escapeHtml(val == null ? '' : val);
+    const sortedDays = [...days].sort((a, b) => a.dayNumber - b.dayNumber);
+    const currentSpeakerSlugs = (session && session.speakers ? session.speakers.map((sp) => sp.slug) : []);
+
+    return `
+      <div class="modal-backdrop" id="session-modal-backdrop">
+        <div class="modal modal--wide">
+          <h2>${isEdit ? 'Edit session' : 'Add session'}</h2>
+          <form id="session-form">
+            <div class="modal-scroll-body">
+              <div class="form-grid">
+                <div class="field field--full">
+                  <label for="sf-title">Title *</label>
+                  <input id="sf-title" required value="${v(session && session.title)}">
+                </div>
+                <div class="field">
+                  <label for="sf-day">Day *</label>
+                  <select id="sf-day" required>
+                    ${sortedDays.map((d) => `<option value="${d.id}" ${session && session.dayId === d.id ? 'selected' : ''}>Day ${d.dayNumber} &mdash; ${App.escapeHtml(d.label || '')}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="sf-sessionType">Session type</label>
+                  <select id="sf-sessionType">
+                    ${SESSION_TYPES.map((t) => `<option value="${t}" ${session && session.sessionType === t ? 'selected' : ''}>${t}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="sf-room">Room</label>
+                  <select id="sf-room">
+                    <option value="">&mdash; none (breaks / plenary) &mdash;</option>
+                    ${rooms.map((r) => `<option value="${r.id}" ${session && session.roomId === r.id ? 'selected' : ''}>${App.escapeHtml(r.name)}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="sf-track">Track</label>
+                  <select id="sf-track">
+                    <option value="">&mdash; none &mdash;</option>
+                    ${tracks.map((t) => `<option value="${t.id}" ${session && session.trackId === t.id ? 'selected' : ''}>${App.escapeHtml(t.name)}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="field field--full">
+                  <p class="session-time-note" id="sf-day-date-label">${dayDateLabel(session ? session.dayId : (sortedDays[0] && sortedDays[0].id))}. Times are conference-local (America/Denver); your browser converts them assuming you're in that timezone.</p>
+                </div>
+                <div class="field">
+                  <label for="sf-startTime">Start time *</label>
+                  <input id="sf-startTime" type="time" required value="${session ? isoToLocalTimeInput(session.startsAt) : '09:00'}">
+                </div>
+                <div class="field">
+                  <label for="sf-endTime">End time *</label>
+                  <input id="sf-endTime" type="time" required value="${session ? isoToLocalTimeInput(session.endsAt) : '10:00'}">
+                  <div class="error-text" id="sf-time-error"></div>
+                </div>
+                <div class="field">
+                  <label for="sf-capacity">Capacity</label>
+                  <input id="sf-capacity" type="number" min="0" value="${session && session.capacity != null ? session.capacity : ''}">
+                </div>
+                <div class="field field--full">
+                  <label for="sf-description">Description</label>
+                  <textarea id="sf-description" rows="3">${v(session && session.description)}</textarea>
+                </div>
+                <div class="field field--full">
+                  <label for="sf-notes">Internal notes</label>
+                  <textarea id="sf-notes" rows="2">${v(session && session.notes)}</textarea>
+                </div>
+                <div class="field field--full">
+                  <div class="toggle-row">
+                    <input type="checkbox" id="sf-isPublished" ${!session || session.isPublished ? 'checked' : ''}>
+                    <label for="sf-isPublished">Published (visible on the public agenda)</label>
+                  </div>
+                  <div class="toggle-row">
+                    <input type="checkbox" id="sf-isRegistrable" ${!session || session.isRegistrable ? 'checked' : ''}>
+                    <label for="sf-isRegistrable">Registrable (attendees can add it to their schedule)</label>
+                  </div>
+                </div>
+                <div class="field field--full">
+                  <label>Speakers</label>
+                  <div class="speaker-picker" id="speaker-picker">
+                    ${speakers
+                      .map(
+                        (sp) => `<div class="speaker-picker-row">
+                          <input type="checkbox" id="sp-${sp.id}" value="${sp.id}" ${currentSpeakerSlugs.includes(sp.id) ? 'checked' : ''}>
+                          <label for="sp-${sp.id}">${App.escapeHtml(sp.fullName)}${sp.company ? ' &mdash; ' + App.escapeHtml(sp.company) : ''}</label>
+                        </div>`
+                      )
+                      .join('') || '<p class="field-note">No speakers yet — add some on the Speakers page first.</p>'}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button type="submit" class="btn btn--primary">${isEdit ? 'Save changes' : 'Create session'}</button>
+              <button type="button" class="btn btn--ghost" id="session-modal-cancel">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>`;
+  }
+
+  function openForm(session) {
+    modalRoot.innerHTML = formHtml(session);
+    wireForm(session);
+  }
+
+  function wireForm(session) {
+    const isEdit = !!session;
+    document.getElementById('session-modal-cancel').addEventListener('click', closeModal);
+    document.getElementById('session-modal-backdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'session-modal-backdrop') closeModal();
+    });
+    document.getElementById('sf-day').addEventListener('change', (e) => {
+      document.getElementById('sf-day-date-label').innerHTML =
+        dayDateLabel(e.target.value) + `. Times are conference-local (America/Denver); your browser converts them assuming you're in that timezone.`;
+    });
+
+    document.getElementById('session-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      document.getElementById('sf-time-error').textContent = '';
+
+      const dayId = document.getElementById('sf-day').value;
+      const day = days.find((d) => d.id === dayId);
+      const startTime = document.getElementById('sf-startTime').value;
+      const endTime = document.getElementById('sf-endTime').value;
+      const startsAt = new Date(`${day.date}T${startTime}:00`).toISOString();
+      const endsAt = new Date(`${day.date}T${endTime}:00`).toISOString();
+      if (new Date(endsAt) <= new Date(startsAt)) {
+        document.getElementById('sf-time-error').textContent = 'End time must be after start time.';
+        return;
+      }
+
+      const speakerIds = Array.from(document.querySelectorAll('#speaker-picker input[type="checkbox"]:checked')).map((el) => el.value);
+      const capacityVal = document.getElementById('sf-capacity').value;
+
+      const body = {
+        title: document.getElementById('sf-title').value.trim(),
+        dayId,
+        roomId: document.getElementById('sf-room').value || null,
+        trackId: document.getElementById('sf-track').value || null,
+        sessionType: document.getElementById('sf-sessionType').value,
+        startsAt,
+        endsAt,
+        capacity: capacityVal === '' ? null : Number(capacityVal),
+        description: document.getElementById('sf-description').value.trim() || undefined,
+        notes: document.getElementById('sf-notes').value.trim() || undefined,
+        isPublished: document.getElementById('sf-isPublished').checked,
+        isRegistrable: document.getElementById('sf-isRegistrable').checked,
+        speakerIds,
+      };
+
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      try {
+        await saveSession(session, body);
+        closeModal();
+        reloadSessions();
+      } catch (err) {
+        if (err.handled) {
+          // already toasted / resolved (e.g. user cancelled a force-confirm)
+        } else if (err.status === 400 && err.data && err.data.error === 'VALIDATION') {
+          document.getElementById('sf-time-error').textContent = 'End time must be after start time.';
+        } else {
+          App.toast(err.message || 'Could not save session.', 'error');
+        }
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  async function saveSession(session, body) {
+    if (!session) {
+      await AdminApp.api('/api/admin/sessions', { method: 'POST', body });
+      App.toast('Session created.', 'success');
+      return;
+    }
+    try {
+      await AdminApp.api(`/api/admin/sessions/${session.id}`, { method: 'PATCH', body });
+      App.toast('Session updated.', 'success');
+    } catch (err) {
+      if (err.status === 409 && err.data && err.data.error === 'HAS_REGISTRATIONS') {
+        const proceed = confirm(`${err.data.count} attendee(s) are registered for this session. Turning off registration anyway?`);
+        if (!proceed) {
+          const e2 = new Error('cancelled');
+          e2.handled = true;
+          throw e2;
+        }
+        await AdminApp.api(`/api/admin/sessions/${session.id}`, { method: 'PATCH', body: { ...body, force: true } });
+        App.toast('Session updated.', 'success');
+        return;
+      }
+      throw err;
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

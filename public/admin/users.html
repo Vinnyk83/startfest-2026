@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Users – StartFEST Admin</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body class="light-shell">
+<div id="admin-shell">
+  <aside id="admin-sidebar"></aside>
+  <main class="admin-main">
+    <div class="admin-page-header">
+      <div>
+        <h1>Users</h1>
+        <p>Attendees and admins registered for StartFEST 2026.</p>
+      </div>
+      <div class="admin-page-header-actions">
+        <a class="btn btn--outline" href="/api/admin/export/registrations.csv">Export CSV</a>
+        <button type="button" class="btn btn--primary" id="add-user-btn">Add user</button>
+      </div>
+    </div>
+
+    <div class="admin-toolbar">
+      <input type="search" id="user-search" class="admin-search" placeholder="Search name, email, or company&hellip;">
+      <select id="role-filter">
+        <option value="">All roles</option>
+        <option value="attendee">Attendee</option>
+        <option value="admin">Admin</option>
+      </select>
+      <select id="active-filter">
+        <option value="">All statuses</option>
+        <option value="true">Active</option>
+        <option value="false">Inactive</option>
+      </select>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Company</th>
+            <th>Role</th>
+            <th>Sessions</th>
+            <th>Last login</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody">
+          <tr><td colspan="8" class="admin-loading">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+
+<script src="/js/app.js"></script>
+<script src="/admin/admin.js"></script>
+<script>
+(function () {
+  let currentUser = null;
+  const state = { page: 1, pageSize: 25, total: 0, q: '', role: '', active: '' };
+  let searchDebounce = null;
+
+  const usersTbody = document.getElementById('users-tbody');
+  const pagination = document.getElementById('pagination');
+  const modalRoot = document.getElementById('modal-root');
+
+  async function boot() {
+    currentUser = await AdminApp.init();
+    document.getElementById('add-user-btn').addEventListener('click', openAddModal);
+    document.getElementById('user-search').addEventListener('input', (e) => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        state.q = e.target.value.trim();
+        state.page = 1;
+        loadUsers();
+      }, 350);
+    });
+    document.getElementById('role-filter').addEventListener('change', (e) => {
+      state.role = e.target.value;
+      state.page = 1;
+      loadUsers();
+    });
+    document.getElementById('active-filter').addEventListener('change', (e) => {
+      state.active = e.target.value;
+      state.page = 1;
+      loadUsers();
+    });
+    loadUsers();
+  }
+
+  function buildQuery() {
+    const params = new URLSearchParams();
+    if (state.q) params.set('q', state.q);
+    if (state.role) params.set('role', state.role);
+    if (state.active) params.set('active', state.active);
+    params.set('page', state.page);
+    return params.toString();
+  }
+
+  async function loadUsers() {
+    usersTbody.innerHTML = '<tr><td colspan="8" class="admin-loading">Loading&hellip;</td></tr>';
+    try {
+      const data = await AdminApp.api('/api/admin/users?' + buildQuery());
+      state.total = data.total;
+      state.pageSize = data.pageSize;
+      renderTable(data.users);
+      renderPagination();
+    } catch (err) {
+      usersTbody.innerHTML = '<tr><td colspan="8" class="admin-empty">Failed to load users.</td></tr>';
+      App.toast(err.message || 'Failed to load users.', 'error');
+    }
+  }
+
+  function fmtLastLogin(iso) {
+    if (!iso) return '<span class="field-note">Never</span>';
+    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function renderTable(users) {
+    if (!users.length) {
+      usersTbody.innerHTML = '<tr><td colspan="8" class="admin-empty">No users match these filters.</td></tr>';
+      return;
+    }
+    usersTbody.innerHTML = users
+      .map((u) => {
+        const isSelf = currentUser && u.id === currentUser.id;
+        return `<tr class="${!u.isActive ? 'row--inactive' : ''}" data-user-id="${u.id}">
+          <td>
+            <div class="cell-name">
+              ${App.initialsAvatar(u.fullName, u.avatarColor, 32)}
+              <div>
+                <strong>${App.escapeHtml(u.fullName)}${isSelf ? ' <span class="field-note">(you)</span>' : ''}</strong>
+                <span>${App.escapeHtml(u.jobTitle || '')}</span>
+              </div>
+            </div>
+          </td>
+          <td>${App.escapeHtml(u.email)}</td>
+          <td>${App.escapeHtml(u.company || '—')}</td>
+          <td><span class="badge ${u.role === 'admin' ? 'badge--accent' : 'badge--muted'}">${App.escapeHtml(u.role)}</span></td>
+          <td>${u.sessionCount}</td>
+          <td>${fmtLastLogin(u.lastLoginAt)}</td>
+          <td><span class="badge ${u.isActive ? 'badge--ok' : 'badge--danger'}">${u.isActive ? 'Active' : 'Inactive'}</span></td>
+          <td class="col-actions">
+            <div class="row-actions">
+              <button type="button" class="btn btn--outline btn--sm" data-action="edit">Edit</button>
+              <button type="button" class="btn btn--outline btn--sm" data-action="schedule">Schedule</button>
+              ${u.isActive
+                ? `<button type="button" class="btn btn--warn btn--sm" data-action="deactivate" ${isSelf ? 'disabled title="You cannot deactivate your own account"' : ''}>Deactivate</button>`
+                : `<button type="button" class="btn btn--outline btn--sm" data-action="reactivate">Reactivate</button>`}
+            </div>
+          </td>
+        </tr>`;
+      })
+      .join('');
+
+    usersTbody.querySelectorAll('tr[data-user-id]').forEach((row) => {
+      const id = row.getAttribute('data-user-id');
+      const user = users.find((u) => u.id === id);
+      row.querySelector('[data-action="edit"]').addEventListener('click', () => openEditModal(user));
+      row.querySelector('[data-action="schedule"]').addEventListener('click', () => openScheduleDrawer(user));
+      const deactivateBtn = row.querySelector('[data-action="deactivate"]');
+      if (deactivateBtn) deactivateBtn.addEventListener('click', () => deactivateUser(user));
+      const reactivateBtn = row.querySelector('[data-action="reactivate"]');
+      if (reactivateBtn) reactivateBtn.addEventListener('click', () => reactivateUser(user));
+    });
+  }
+
+  function renderPagination() {
+    const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
+    pagination.innerHTML = `
+      <button type="button" class="btn btn--outline btn--sm" id="prev-page" ${state.page <= 1 ? 'disabled' : ''}>Prev</button>
+      <span>Page ${state.page} of ${totalPages} &middot; ${state.total} user${state.total === 1 ? '' : 's'}</span>
+      <button type="button" class="btn btn--outline btn--sm" id="next-page" ${state.page >= totalPages ? 'disabled' : ''}>Next</button>`;
+    const prev = document.getElementById('prev-page');
+    const next = document.getElementById('next-page');
+    if (prev) prev.addEventListener('click', () => { state.page--; loadUsers(); });
+    if (next) next.addEventListener('click', () => { state.page++; loadUsers(); });
+  }
+
+  async function deactivateUser(user) {
+    if (!confirm(`Deactivate ${user.fullName}? They will no longer be able to log in.`)) return;
+    try {
+      await AdminApp.api(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+      App.toast(`${user.fullName} deactivated.`, 'success');
+      loadUsers();
+    } catch (err) {
+      App.toast(err.message || 'Could not deactivate user.', 'error');
+    }
+  }
+
+  async function reactivateUser(user) {
+    try {
+      await AdminApp.api(`/api/admin/users/${user.id}`, { method: 'PATCH', body: { isActive: true } });
+      App.toast(`${user.fullName} reactivated.`, 'success');
+      loadUsers();
+    } catch (err) {
+      App.toast(err.message || 'Could not reactivate user.', 'error');
+    }
+  }
+
+  // ---------- modal plumbing ----------
+  function closeModal() {
+    modalRoot.innerHTML = '';
+  }
+
+  const AVATAR_COLORS = ['#C4E538', '#1E7FC4', '#E0A93C', '#E0453C', '#1E9E6B', '#8E6BC4'];
+
+  function userFormHtml(user) {
+    const isEdit = !!user;
+    const isSelf = isEdit && currentUser && user.id === currentUser.id;
+    const v = (val) => App.escapeHtml(val == null ? '' : val);
+    return `
+      <div class="modal-backdrop" id="user-modal-backdrop">
+        <div class="modal modal--wide">
+          <h2>${isEdit ? 'Edit user' : 'Add user'}</h2>
+          <form id="user-form">
+            <div class="modal-scroll-body">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="uf-fullName">Full name *</label>
+                  <input id="uf-fullName" name="fullName" required value="${v(user && user.fullName)}">
+                </div>
+                <div class="field">
+                  <label for="uf-email">Email *</label>
+                  <input id="uf-email" name="email" type="email" required value="${v(user && user.email)}">
+                  <div class="error-text" id="uf-email-error"></div>
+                </div>
+                <div class="field">
+                  <label for="uf-username">Username</label>
+                  <input id="uf-username" name="username" value="${v(user && user.username)}">
+                </div>
+                <div class="field">
+                  <label for="uf-jobTitle">Job title</label>
+                  <input id="uf-jobTitle" name="jobTitle" value="${v(user && user.jobTitle)}">
+                </div>
+                <div class="field">
+                  <label for="uf-company">Company</label>
+                  <input id="uf-company" name="company" value="${v(user && user.company)}">
+                </div>
+                <div class="field">
+                  <label for="uf-linkedinUrl">LinkedIn URL</label>
+                  <input id="uf-linkedinUrl" name="linkedinUrl" value="${v(user && user.linkedinUrl)}">
+                </div>
+                <div class="field field--full">
+                  <label for="uf-bio">Bio</label>
+                  <textarea id="uf-bio" name="bio" rows="2" maxlength="500">${v(user && user.bio)}</textarea>
+                </div>
+                <div class="field">
+                  <label for="uf-avatarColor">Avatar color</label>
+                  <input id="uf-avatarColor" name="avatarColor" type="color" value="${v(user && user.avatarColor) || '#C4E538'}" style="height:40px; padding:4px;">
+                </div>
+                <div class="field">
+                  <label for="uf-role">Role</label>
+                  <select id="uf-role" name="role" ${isSelf ? 'disabled' : ''}>
+                    <option value="attendee" ${user && user.role === 'attendee' ? 'selected' : ''}>Attendee</option>
+                    <option value="admin" ${user && user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                  </select>
+                  ${isSelf ? '<div class="field-note field-note--warn">You cannot change your own role.</div>' : ''}
+                </div>
+                <div class="field">
+                  <label for="uf-password">${isEdit ? 'Set new password' : 'Password'}</label>
+                  <input id="uf-password" name="password" type="password" autocomplete="new-password" placeholder="${isEdit ? 'Leave blank to keep unchanged' : 'Leave blank to auto-generate'}">
+                </div>
+                <div class="field field--full">
+                  <div class="toggle-row">
+                    <input type="checkbox" id="uf-shareAttendance" ${!user || user.shareAttendance ? 'checked' : ''}>
+                    <label for="uf-shareAttendance">Share attendance publicly (this user appears in session attendee lists)</label>
+                  </div>
+                  ${isEdit ? `<div class="toggle-row">
+                    <input type="checkbox" id="uf-isActive" ${user.isActive ? 'checked' : ''} ${isSelf ? 'disabled' : ''}>
+                    <label for="uf-isActive">Active (can log in)</label>
+                  </div>
+                  ${isSelf ? '<div class="field-note field-note--warn">You cannot deactivate your own account.</div>' : ''}` : ''}
+                </div>
+              </div>
+              ${isEdit && !isSelf ? `
+              <div class="danger-zone">
+                <h3>Danger zone</h3>
+                <button type="button" class="btn btn--danger btn--sm" id="hard-delete-btn">Delete permanently&hellip;</button>
+                <p class="field-note">Permanently deletes this user and cascades their registrations. This cannot be undone.</p>
+              </div>` : ''}
+            </div>
+            <div class="modal-actions">
+              <button type="submit" class="btn btn--primary">${isEdit ? 'Save changes' : 'Create user'}</button>
+              <button type="button" class="btn btn--ghost" id="user-modal-cancel">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>`;
+  }
+
+  function openAddModal() {
+    modalRoot.innerHTML = userFormHtml(null);
+    wireUserForm(null);
+  }
+
+  function openEditModal(user) {
+    modalRoot.innerHTML = userFormHtml(user);
+    wireUserForm(user);
+  }
+
+  function wireUserForm(user) {
+    const isEdit = !!user;
+    const isSelf = isEdit && currentUser && user.id === currentUser.id;
+    document.getElementById('user-modal-cancel').addEventListener('click', closeModal);
+    document.getElementById('user-modal-backdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'user-modal-backdrop') closeModal();
+    });
+    const hardDeleteBtn = document.getElementById('hard-delete-btn');
+    if (hardDeleteBtn) hardDeleteBtn.addEventListener('click', () => openHardDeleteModal(user));
+
+    document.getElementById('user-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      document.getElementById('uf-email-error').textContent = '';
+      const body = {
+        fullName: document.getElementById('uf-fullName').value.trim(),
+        email: document.getElementById('uf-email').value.trim(),
+        username: document.getElementById('uf-username').value.trim() || undefined,
+        jobTitle: document.getElementById('uf-jobTitle').value.trim() || undefined,
+        company: document.getElementById('uf-company').value.trim() || undefined,
+        linkedinUrl: document.getElementById('uf-linkedinUrl').value.trim() || undefined,
+        bio: document.getElementById('uf-bio').value.trim() || undefined,
+        avatarColor: document.getElementById('uf-avatarColor').value || undefined,
+        shareAttendance: document.getElementById('uf-shareAttendance').checked,
+      };
+      if (!isSelf) body.role = document.getElementById('uf-role').value;
+      const password = document.getElementById('uf-password').value;
+      if (password) body.password = password;
+      if (isEdit) {
+        const isActiveEl = document.getElementById('uf-isActive');
+        if (isActiveEl && !isSelf) body.isActive = isActiveEl.checked;
+      }
+
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      try {
+        if (isEdit) {
+          await AdminApp.api(`/api/admin/users/${user.id}`, { method: 'PATCH', body });
+          App.toast('User updated.', 'success');
+          closeModal();
+          loadUsers();
+        } else {
+          const result = await AdminApp.api('/api/admin/users', { method: 'POST', body });
+          closeModal();
+          loadUsers();
+          if (result.generatedPassword) {
+            showGeneratedPassword(result.user, result.generatedPassword);
+          } else {
+            App.toast('User created.', 'success');
+          }
+        }
+      } catch (err) {
+        if (err.status === 400 && err.data && err.data.error === 'VALIDATION' && err.data.fields && err.data.fields.email) {
+          document.getElementById('uf-email-error').textContent = err.data.fields.email;
+        } else if (err.status === 400 && err.data && err.data.error === 'SELF_LOCKOUT') {
+          App.toast(err.data.message || 'You cannot change that on your own account.', 'error');
+        } else {
+          App.toast(err.message || 'Could not save user.', 'error');
+        }
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  function showGeneratedPassword(user, password) {
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="pw-modal-backdrop">
+        <div class="modal">
+          <h2>User created</h2>
+          <div class="generated-password-box">
+            <strong>${App.escapeHtml(user.fullName)}</strong>'s generated password &mdash; copy this now, it won't be shown again:
+            <div><code id="generated-password-value">${App.escapeHtml(password)}</code></div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn--outline btn--sm" id="copy-pw-btn">Copy password</button>
+            <button type="button" class="btn btn--primary" id="pw-modal-close">Done</button>
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('pw-modal-close').addEventListener('click', closeModal);
+    document.getElementById('copy-pw-btn').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(password);
+        App.toast('Password copied to clipboard.', 'success');
+      } catch (e) {
+        App.toast('Could not copy automatically — select and copy manually.', 'error');
+      }
+    });
+  }
+
+  function openHardDeleteModal(user) {
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="hd-modal-backdrop">
+        <div class="modal">
+          <h2>Delete ${App.escapeHtml(user.fullName)}?</h2>
+          <p>This permanently deletes the user and cascades all of their registrations. This cannot be undone.</p>
+          <div class="field">
+            <label for="hd-confirm-text">Type <strong>DELETE</strong> to confirm</label>
+            <input id="hd-confirm-text" autocomplete="off">
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn--danger" id="hd-confirm-btn" disabled>Delete permanently</button>
+            <button type="button" class="btn btn--ghost" id="hd-cancel-btn">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+    const input = document.getElementById('hd-confirm-text');
+    const confirmBtn = document.getElementById('hd-confirm-btn');
+    input.addEventListener('input', () => {
+      confirmBtn.disabled = input.value.trim() !== 'DELETE';
+    });
+    document.getElementById('hd-cancel-btn').addEventListener('click', () => openEditModal(user));
+    confirmBtn.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      try {
+        await AdminApp.api(`/api/admin/users/${user.id}?hard=true`, { method: 'DELETE' });
+        App.toast(`${user.fullName} permanently deleted.`, 'success');
+        closeModal();
+        loadUsers();
+      } catch (err) {
+        App.toast(err.message || 'Could not delete user.', 'error');
+        confirmBtn.disabled = false;
+      }
+    });
+  }
+
+  // ---------- view schedule drawer ----------
+  let allSessionsCache = null;
+
+  function closeDrawer() {
+    modalRoot.innerHTML = '';
+  }
+
+  async function openScheduleDrawer(user) {
+    modalRoot.innerHTML = `
+      <div class="drawer-backdrop" id="drawer-backdrop">
+        <div class="drawer">
+          <button type="button" class="btn btn--ghost btn--sm drawer-close" id="drawer-close-btn">Close</button>
+          <h2>${App.escapeHtml(user.fullName)}'s schedule</h2>
+          <div id="drawer-body"><p class="admin-loading">Loading&hellip;</p></div>
+        </div>
+      </div>`;
+    document.getElementById('drawer-close-btn').addEventListener('click', closeDrawer);
+    document.getElementById('drawer-backdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'drawer-backdrop') closeDrawer();
+    });
+    await refreshDrawer(user);
+  }
+
+  async function refreshDrawer(user) {
+    const body = document.getElementById('drawer-body');
+    if (!body) return;
+    try {
+      const [schedule, sessions] = await Promise.all([
+        AdminApp.api(`/api/admin/users/${user.id}/schedule`),
+        allSessionsCache || AdminApp.api('/api/admin/sessions'),
+      ]);
+      allSessionsCache = sessions;
+      renderDrawer(user, schedule, sessions);
+    } catch (err) {
+      body.innerHTML = '<p class="admin-empty">Failed to load schedule.</p>';
+      App.toast(err.message || 'Failed to load schedule.', 'error');
+    }
+  }
+
+  function renderDrawer(user, schedule, sessions) {
+    const body = document.getElementById('drawer-body');
+    if (!body) return;
+    const regs = schedule.registrations || [];
+    const byDay = {};
+    regs.forEach((r) => {
+      const key = r.dayNumber || 0;
+      (byDay[key] = byDay[key] || []).push(r);
+    });
+    const dayKeys = Object.keys(byDay).sort((a, b) => Number(a) - Number(b));
+
+    let html = '';
+    if (schedule.conflictCount > 0) {
+      html += `<p class="field-note field-note--warn">${schedule.conflictCount} session${schedule.conflictCount > 1 ? 's' : ''} on this schedule overlap another.</p>`;
+    }
+    if (!regs.length) {
+      html += '<p class="admin-empty">No sessions on this schedule yet.</p>';
+    } else {
+      dayKeys.forEach((day) => {
+        html += `<div class="drawer-day-group"><h3>Day ${App.escapeHtml(day)}</h3>`;
+        byDay[day].forEach((r) => {
+          html += `<div class="drawer-session-row" data-session-id="${r.id}">
+            <div class="info">
+              <strong>${App.escapeHtml(r.title)}</strong>
+              <span>${App.formatTimeRange(r.startsAt, r.endsAt)}${r.roomName ? ' &middot; ' + App.escapeHtml(r.roomName) : ''}</span>
+              ${r.conflicts && r.conflicts.length ? '<div class="conflict-flag">&#9888; Overlaps another session on this schedule</div>' : ''}
+            </div>
+            <button type="button" class="btn btn--outline btn--sm" data-remove-session="${r.id}">Remove</button>
+          </div>`;
+        });
+        html += '</div>';
+      });
+    }
+
+    const registeredIds = new Set(regs.map((r) => r.id));
+    const addable = sessions
+      .filter((s) => s.isRegistrable && !registeredIds.has(s.id))
+      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+
+    html += `<div class="drawer-add-row">
+      <select id="add-session-select">
+        <option value="">Add a session&hellip;</option>
+        ${addable
+          .map(
+            (s) =>
+              `<option value="${s.id}">Day ${s.dayNumber} &middot; ${App.formatTimeRange(s.startsAt, s.endsAt)} &middot; ${App.escapeHtml(s.title)}</option>`
+          )
+          .join('')}
+      </select>
+      <button type="button" class="btn btn--primary btn--sm" id="add-session-btn">Add</button>
+    </div>`;
+
+    body.innerHTML = html;
+
+    body.querySelectorAll('[data-remove-session]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const sessionId = btn.getAttribute('data-remove-session');
+        btn.disabled = true;
+        try {
+          await AdminApp.api(`/api/admin/users/${user.id}/registrations/${sessionId}`, { method: 'DELETE' });
+          App.toast('Removed from schedule.', 'success');
+          await refreshDrawer(user);
+          loadUsers();
+        } catch (err) {
+          App.toast(err.message || 'Could not remove session.', 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    const addBtn = document.getElementById('add-session-btn');
+    if (addBtn) {
+      addBtn.addEventListener('click', async () => {
+        const select = document.getElementById('add-session-select');
+        const sessionId = select.value;
+        if (!sessionId) return;
+        addBtn.disabled = true;
+        try {
+          await AdminApp.api(`/api/admin/users/${user.id}/registrations`, { method: 'POST', body: { sessionId } });
+          App.toast('Session added to schedule.', 'success');
+          await refreshDrawer(user);
+          loadUsers();
+        } catch (err) {
+          App.toast(err.message || 'Could not add session.', 'error');
+        } finally {
+          addBtn.disabled = false;
+        }
+      });
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

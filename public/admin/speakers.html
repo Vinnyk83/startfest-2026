@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speakers – StartFEST Admin</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body class="light-shell">
+<div id="admin-shell">
+  <aside id="admin-sidebar"></aside>
+  <main class="admin-main">
+    <div class="admin-page-header">
+      <div>
+        <h1>Speakers</h1>
+        <p>Everyone presenting at StartFEST 2026.</p>
+      </div>
+      <div class="admin-page-header-actions">
+        <button type="button" class="btn btn--primary" id="add-speaker-btn">Add speaker</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Speaker</th>
+            <th>Title / Company</th>
+            <th>Keynote</th>
+            <th>Sessions</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="speakers-tbody">
+          <tr><td colspan="5" class="admin-loading">Loading&hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+
+<script src="/js/app.js"></script>
+<script src="/admin/admin.js"></script>
+<script>
+(function () {
+  const tbody = document.getElementById('speakers-tbody');
+  const modalRoot = document.getElementById('modal-root');
+  let speakers = [];
+
+  async function boot() {
+    await AdminApp.init();
+    document.getElementById('add-speaker-btn').addEventListener('click', openAddModal);
+    loadSpeakers();
+  }
+
+  async function loadSpeakers() {
+    tbody.innerHTML = '<tr><td colspan="5" class="admin-loading">Loading&hellip;</td></tr>';
+    try {
+      speakers = await AdminApp.api('/api/admin/speakers');
+      renderTable();
+    } catch (err) {
+      tbody.innerHTML = '<tr><td colspan="5" class="admin-empty">Failed to load speakers.</td></tr>';
+      App.toast(err.message || 'Failed to load speakers.', 'error');
+    }
+  }
+
+  function renderTable() {
+    if (!speakers.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="admin-empty">No speakers yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = speakers
+      .map((s) => {
+        const avatar = s.headshotUrl
+          ? `<img class="headshot-thumb" src="${App.escapeHtml(s.headshotUrl)}" alt="">`
+          : App.initialsAvatar(s.fullName, '#C4E538', 36);
+        return `<tr data-speaker-id="${s.id}">
+          <td>
+            <div class="cell-name">
+              ${avatar}
+              <div>
+                <strong>${App.escapeHtml(s.fullName)}</strong>
+                <span>/speakers/${App.escapeHtml(s.slug)}</span>
+              </div>
+            </div>
+          </td>
+          <td>${App.escapeHtml([s.title, s.company].filter(Boolean).join(', ') || '—')}</td>
+          <td>${s.isKeynote ? '<span class="badge badge--accent">Keynote</span>' : ''}</td>
+          <td>${s.sessionCount}</td>
+          <td class="col-actions">
+            <div class="row-actions">
+              <button type="button" class="btn btn--outline btn--sm" data-action="edit">Edit</button>
+              <button type="button" class="btn btn--danger btn--sm" data-action="delete">Delete</button>
+            </div>
+          </td>
+        </tr>`;
+      })
+      .join('');
+
+    tbody.querySelectorAll('tr[data-speaker-id]').forEach((row) => {
+      const id = row.getAttribute('data-speaker-id');
+      const speaker = speakers.find((s) => s.id === id);
+      row.querySelector('[data-action="edit"]').addEventListener('click', () => openEditModal(speaker));
+      row.querySelector('[data-action="delete"]').addEventListener('click', () => deleteSpeaker(speaker));
+    });
+  }
+
+  async function deleteSpeaker(speaker) {
+    const msg = speaker.sessionCount > 0
+      ? `${speaker.fullName} is assigned to ${speaker.sessionCount} session(s). Delete anyway? This removes them from those sessions.`
+      : `Delete ${speaker.fullName}? This cannot be undone.`;
+    if (!confirm(msg)) return;
+    try {
+      await AdminApp.api(`/api/admin/speakers/${speaker.id}`, { method: 'DELETE' });
+      App.toast(`${speaker.fullName} deleted.`, 'success');
+      loadSpeakers();
+    } catch (err) {
+      App.toast(err.message || 'Could not delete speaker.', 'error');
+    }
+  }
+
+  function closeModal() {
+    modalRoot.innerHTML = '';
+  }
+
+  function slugify(str) {
+    return String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  }
+
+  function speakerFormHtml(speaker) {
+    const isEdit = !!speaker;
+    const v = (val) => App.escapeHtml(val == null ? '' : val);
+    return `
+      <div class="modal-backdrop" id="speaker-modal-backdrop">
+        <div class="modal modal--wide">
+          <h2>${isEdit ? 'Edit speaker' : 'Add speaker'}</h2>
+          <form id="speaker-form">
+            <div class="modal-scroll-body">
+              <div class="form-grid">
+                <div class="field field--full">
+                  <label for="sf-fullName">Full name *</label>
+                  <input id="sf-fullName" required value="${v(speaker && speaker.fullName)}">
+                </div>
+                <div class="field field--full">
+                  <label for="sf-slug">Slug</label>
+                  <input id="sf-slug" value="${v(speaker && speaker.slug)}" placeholder="auto-generated from name">
+                  <div class="slug-preview">Public URL: <code id="sf-slug-preview">/speakers/${v(speaker && speaker.slug) || '&hellip;'}</code></div>
+                  <div class="error-text" id="sf-slug-error"></div>
+                </div>
+                <div class="field">
+                  <label for="sf-title">Title</label>
+                  <input id="sf-title" value="${v(speaker && speaker.title)}">
+                </div>
+                <div class="field">
+                  <label for="sf-company">Company</label>
+                  <input id="sf-company" value="${v(speaker && speaker.company)}">
+                </div>
+                <div class="field field--full">
+                  <label for="sf-bio">Bio</label>
+                  <textarea id="sf-bio" rows="3">${v(speaker && speaker.bio)}</textarea>
+                </div>
+                <div class="field">
+                  <label for="sf-headshotUrl">Headshot URL</label>
+                  <input id="sf-headshotUrl" value="${v(speaker && speaker.headshotUrl)}">
+                </div>
+                <div class="field">
+                  <label for="sf-linkedinUrl">LinkedIn URL</label>
+                  <input id="sf-linkedinUrl" value="${v(speaker && speaker.linkedinUrl)}">
+                </div>
+                <div class="field field--full">
+                  <label for="sf-websiteUrl">Website URL</label>
+                  <input id="sf-websiteUrl" value="${v(speaker && speaker.websiteUrl)}">
+                </div>
+                <div class="field field--full">
+                  <div class="toggle-row">
+                    <input type="checkbox" id="sf-isKeynote" ${speaker && speaker.isKeynote ? 'checked' : ''}>
+                    <label for="sf-isKeynote">Keynote speaker</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button type="submit" class="btn btn--primary">${isEdit ? 'Save changes' : 'Create speaker'}</button>
+              <button type="button" class="btn btn--ghost" id="speaker-modal-cancel">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>`;
+  }
+
+  function openAddModal() {
+    modalRoot.innerHTML = speakerFormHtml(null);
+    wireForm(null);
+  }
+  function openEditModal(speaker) {
+    modalRoot.innerHTML = speakerFormHtml(speaker);
+    wireForm(speaker);
+  }
+
+  function wireForm(speaker) {
+    const isEdit = !!speaker;
+    document.getElementById('speaker-modal-cancel').addEventListener('click', closeModal);
+    document.getElementById('speaker-modal-backdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'speaker-modal-backdrop') closeModal();
+    });
+    const nameInput = document.getElementById('sf-fullName');
+    const slugInput = document.getElementById('sf-slug');
+    const slugPreview = document.getElementById('sf-slug-preview');
+    let slugManuallyEdited = isEdit;
+    slugInput.addEventListener('input', () => {
+      slugManuallyEdited = true;
+      slugPreview.textContent = '/speakers/' + (slugify(slugInput.value) || '…');
+    });
+    nameInput.addEventListener('input', () => {
+      if (!slugManuallyEdited) {
+        slugInput.value = slugify(nameInput.value);
+        slugPreview.textContent = '/speakers/' + (slugInput.value || '…');
+      }
+    });
+
+    document.getElementById('speaker-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      document.getElementById('sf-slug-error').textContent = '';
+      const body = {
+        fullName: nameInput.value.trim(),
+        slug: slugInput.value.trim() || undefined,
+        title: document.getElementById('sf-title').value.trim() || undefined,
+        company: document.getElementById('sf-company').value.trim() || undefined,
+        bio: document.getElementById('sf-bio').value.trim() || undefined,
+        headshotUrl: document.getElementById('sf-headshotUrl').value.trim() || undefined,
+        linkedinUrl: document.getElementById('sf-linkedinUrl').value.trim() || undefined,
+        websiteUrl: document.getElementById('sf-websiteUrl').value.trim() || undefined,
+        isKeynote: document.getElementById('sf-isKeynote').checked,
+      };
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      try {
+        if (isEdit) {
+          await AdminApp.api(`/api/admin/speakers/${speaker.id}`, { method: 'PATCH', body });
+          App.toast('Speaker updated.', 'success');
+        } else {
+          await AdminApp.api('/api/admin/speakers', { method: 'POST', body });
+          App.toast('Speaker created.', 'success');
+        }
+        closeModal();
+        loadSpeakers();
+      } catch (err) {
+        if (err.status === 400 && err.data && err.data.error === 'VALIDATION' && err.data.fields && err.data.fields.slug) {
+          document.getElementById('sf-slug-error').textContent = err.data.fields.slug;
+        } else {
+          App.toast(err.message || 'Could not save speaker.', 'error');
+        }
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

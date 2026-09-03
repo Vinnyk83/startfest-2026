@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Schedule — StartFEST 2026</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+<header class="site-header"><div id="site-nav"></div></header>
+
+<div class="page-header">
+  <h1>My Schedule</h1>
+</div>
+
+<div id="conflict-banner"></div>
+
+<div class="container">
+  <div class="card" style="margin-bottom:20px;">
+    <h2 style="margin-top:0;">Calendar</h2>
+    <div class="calendar-actions">
+      <a class="btn btn--primary btn--sm" id="ics-download-link" href="/api/calendar/me.ics">Download my schedule (.ics)</a>
+    </div>
+    <div style="margin-top:14px;">
+      <label for="subscribe-url">Subscribe (auto-updating)</label>
+      <div class="subscribe-box">
+        <input type="text" id="subscribe-url" readonly>
+        <a class="btn btn--outline btn--sm" id="webcal-link" href="#">Open</a>
+        <button type="button" class="btn btn--outline btn--sm" id="copy-link-btn">Copy link</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="schedule-body">
+    <div class="card skeleton" style="height:120px;"></div>
+    <div class="card skeleton" style="height:120px; margin-top:12px;"></div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/session-actions.js"></script>
+<script src="/js/session-card.js"></script>
+<script src="/js/my-schedule.js"></script>
+</body>
+</html>

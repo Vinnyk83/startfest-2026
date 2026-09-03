@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StartFEST 2026 — Preview</title>
+<style>
+:root {
+  --bg-top: #0B44A8;
+  --bg-mid: #1E7FC4;
+  --bg-bottom: #3FC1D9;
+  --ink: #12314F;
+  --ink-soft: #55708A;
+  --accent: #C4E538;
+  --accent-ink: #12314F;
+  --card: #FFFFFF;
+  --card-muted: rgba(255,255,255,0.16);
+  --warn: #E0A93C;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --font: 'Figtree','Poppins',system-ui,-apple-system,sans-serif;
+}
+* { box-sizing: border-box; }
+html,body { margin:0; padding:0; }
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: linear-gradient(180deg, var(--bg-top), var(--bg-mid) 55%, var(--bg-bottom));
+  min-height: 100vh;
+}
+a { color: inherit; }
+.container { max-width: 1100px; margin: 0 auto; padding: 0 20px 64px; }
+.notice {
+  background: rgba(0,0,0,0.25); color: #fff; text-align: center; font-size: 13px;
+  padding: 8px 14px; font-weight: 600;
+}
+.notice b { color: var(--accent); }
+header.hero { text-align: center; padding: 36px 20px 20px; color: #fff; }
+header.hero h1 { font-size: 34px; margin: 0 0 4px; letter-spacing: 0.01em; }
+header.hero .tagline { opacity: 0.9; font-weight: 600; }
+header.hero .venue { opacity: 0.75; font-size: 14px; margin-top: 6px; }
+
+.day-tabs { display: flex; gap: 10px; justify-content: center; margin: 20px 0; position: sticky; top: 0; z-index: 20; padding: 10px 0; }
+.day-tab {
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.3); color: #fff;
+  padding: 10px 20px; border-radius: 999px; font-weight: 700; cursor: pointer; font-size: 14px;
+}
+.day-tab.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; margin-bottom: 24px; }
+.chip {
+  padding: 6px 14px; border-radius: 999px; font-size: 12px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.03em; cursor: pointer; border: 2px solid transparent; opacity: 0.55;
+}
+.chip.active { opacity: 1; box-shadow: 0 0 0 2px #fff inset; }
+.filters select, .filters input[type="text"] {
+  padding: 8px 12px; border-radius: 999px; border: none; font-size: 13px; font-family: inherit;
+}
+.filters .clear { background: transparent; border: 1px solid rgba(255,255,255,0.5); color: #fff; padding: 7px 14px; border-radius: 999px; cursor: pointer; font-size: 13px; }
+
+.plenary {
+  background: var(--ink); color: #fff; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 12px;
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;
+}
+.plenary .time { font-weight: 800; color: var(--accent); min-width: 130px; }
+.plenary .title { font-weight: 700; font-size: 16px; }
+.plenary .meta { font-size: 13px; opacity: 0.75; }
+
+.break-strip {
+  background: var(--card-muted); color: #fff; border-radius: var(--radius-sm); padding: 10px 20px;
+  margin-bottom: 12px; display: flex; justify-content: space-between; font-size: 13px; font-weight: 600;
+}
+
+.room-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 900px) { .room-grid { grid-template-columns: 1fr; } }
+.room-col-label { color: #fff; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; margin-bottom: 6px; }
+
+.card {
+  background: var(--card); border-radius: var(--radius); padding: 14px; box-shadow: 0 8px 24px rgba(10,30,60,0.15);
+  margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px;
+}
+.pill { display: inline-block; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; padding: 3px 9px; border-radius: 999px; width: fit-content; }
+.card .title { font-weight: 800; font-size: 15px; }
+.card .speakers { font-size: 13px; color: var(--ink-soft); }
+.card .time { font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+.card .room-tag { font-size: 11px; color: var(--ink-soft); }
+.card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.avatar-stack { display: flex; }
+.avatar {
+  width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; color: var(--ink); border: 2px solid #fff; flex-shrink: 0;
+}
+.avatar-stack .avatar:not(:first-child) { margin-left: -8px; }
+.attendee-note { font-size: 11px; color: var(--ink-soft); }
+
+.btn {
+  font-family: inherit; font-weight: 700; font-size: 13px; border-radius: 999px; border: 1.5px solid transparent;
+  padding: 7px 14px; cursor: pointer; background: var(--accent); color: var(--accent-ink);
+}
+.btn.added { background: #fff; color: var(--ink); border-color: rgba(18,49,79,0.2); }
+.btn.warn { background: #fff; color: var(--warn); border-color: var(--warn); }
+.btn.small { padding: 5px 10px; font-size: 12px; }
+
+.empty { text-align: center; color: #fff; padding: 40px 20px; opacity: 0.9; }
+
+.tabs-top { display: flex; justify-content: center; gap: 8px; margin: 8px 0 4px; }
+.tabs-top button {
+  background: transparent; border: none; color: rgba(255,255,255,0.8); font-weight: 700; padding: 6px 12px;
+  cursor: pointer; border-bottom: 3px solid transparent; font-size: 14px;
+}
+.tabs-top button.active { color: #fff; border-color: var(--accent); }
+
+footer { text-align: center; color: rgba(255,255,255,0.7); font-size: 12px; padding: 20px; }
+</style>
+</head>
+<body>
+
+<div class="notice">Static preview — no server or database, nothing here is saved anywhere real. <b>"Add"</b> only remembers your picks in this browser tab. Run the real app (<code>npm start</code>) for the working version.</div>
+
+<header class="hero">
+  <h1 id="conf-name">StartFEST</h1>
+  <div class="tagline" id="conf-tagline">2 Days • 6 Tracks • 36 Sessions • 3 Rooms</div>
+  <div class="venue" id="conf-venue">Mountain America Event Venue · Silicon Slopes</div>
+</header>
+
+<div class="tabs-top">
+  <button id="tab-agenda" class="active">Agenda</button>
+  <button id="tab-schedule">My Schedule (<span id="sched-count">0</span>)</button>
+</div>
+
+<div class="container">
+  <div id="agenda-view">
+    <div class="day-tabs" id="day-tabs"></div>
+    <div class="filters" id="filters"></div>
+    <div id="agenda-body"></div>
+  </div>
+  <div id="schedule-view" style="display:none;">
+    <div id="schedule-body"></div>
+  </div>
+</div>
+
+<footer>Schedule subject to change · Times shown as printed on the agenda (no timezone conversion in this static preview)</footer>
+
+<script>
+// ---------- embedded seed data (subset of data/seed-data.js, for preview only) ----------
+const TRACKS = [
+  { slug:'ai', name:'AI', colorHex:'#C4E538', textHex:'#12314F' },
+  { slug:'marketing', name:'Marketing', colorHex:'#21C99A', textHex:'#0B2E24' },
+  { slug:'operations', name:'Operations', colorHex:'#4FB3F0', textHex:'#0A2438' },
+  { slug:'funding', name:'Funding', colorHex:'#6B7BF7', textHex:'#FFFFFF' },
+  { slug:'self-leadership', name:'Self Leadership', colorHex:'#A55BE0', textHex:'#FFFFFF' },
+  { slug:'sales', name:'Sales', colorHex:'#E84BC9', textHex:'#FFFFFF' },
+];
+const ROOMS = { MAIN:'Mainstage', A:'Start Room', B:'Ignition Room', C:'Accelerator', RESOURCE:'Resource Room' };
+const trackBy = Object.fromEntries(TRACKS.map(t => [t.slug, t]));
+
+const sp = (name) => name;
+const DAY1 = [
+  { slug:'d1-welcome', start:'9:00 AM', end:'9:15 AM', room:'MAIN', track:null, type:'ceremony', title:'Welcome', speakers:['Clint Betts','Lindsey Ivie'], reg:true },
+  { slug:'d1-opening-keynote', start:'9:15 AM', end:'9:45 AM', room:'MAIN', track:null, type:'keynote', title:'Opening Keynote', speakers:['Nick Thomas'], reg:true },
+  { slug:'d1-state', start:'9:45 AM', end:'10:15 AM', room:'MAIN', track:null, type:'panel', title:'The State of Silicon Slopes: Where the Money Is Moving', speakers:['Ryan Caldwell','Tara Rosander'], reg:true },
+  { slug:'d1-bridging', start:'10:30 AM', end:'11:05 AM', room:'A', track:'funding', type:'breakout', title:'Bridging the Gap', speakers:['Scott Holley'], reg:true },
+  { slug:'d1-scale', start:'10:30 AM', end:'11:05 AM', room:'B', track:'self-leadership', type:'breakout', title:"You Can't Scale What You Can't Regulate", speakers:['Lisa Jones Christensen'], reg:true },
+  { slug:'d1-blueprint', start:'10:30 AM', end:'11:05 AM', room:'C', track:'ai', type:'workshop', title:'AI Blueprint Workshop', speakers:['Cameo Doran'], reg:true },
+  { slug:'d1-surviving', start:'10:30 AM', end:'11:05 AM', room:'A', track:'ai', type:'breakout', title:'Surviving the AI Correction', speakers:['Michael Malin'], reg:true, roomConflict:true },
+  { slug:'d1-break-am', start:'11:05 AM', end:'11:25 AM', room:null, track:null, type:'break', title:'Break', speakers:[], reg:false },
+  { slug:'d1-gtm', start:'11:25 AM', end:'12:00 PM', room:'A', track:'sales', type:'breakout', title:'AI Is Not Your CMO: The New GTM Math', speakers:['Joe Grover'], reg:true },
+  { slug:'d1-funding2', start:'11:25 AM', end:'12:00 PM', room:'B', track:'funding', type:'breakout', title:'Funding', speakers:['Brock Blake'], reg:true },
+  { slug:'d1-even', start:'11:25 AM', end:'12:00 PM', room:'C', track:'self-leadership', type:'breakout', title:'Even-Achieving: How to Balance Stress with Success', speakers:['Erika Coleman'], reg:true },
+  { slug:'d1-lunch', start:'12:00 PM', end:'1:30 PM', room:null, track:null, type:'break', title:'Networking Lunch', speakers:[], reg:false },
+  { slug:'d1-content', start:'1:30 PM', end:'2:05 PM', room:'A', track:'marketing', type:'breakout', title:'How to Make Content People Actually Want to Watch', speakers:['Levi Lindsay'], reg:true },
+  { slug:'d1-csuite', start:'1:30 PM', end:'2:05 PM', room:'B', track:'ai', type:'breakout', title:'AI for the C-Suite', speakers:['Landon Essig'], reg:true },
+  { slug:'d1-advisory', start:'1:30 PM', end:'2:05 PM', room:'C', track:'funding', type:'breakout', title:'Build an Advisory Board to Strengthen Fundraising', speakers:['Nicole Toomey Davis'], reg:true },
+  { slug:'d1-lead-daly', start:'2:15 PM', end:'3:00 PM', room:'A', track:'self-leadership', type:'breakout', title:'Leadership', speakers:['Steve Daly'], reg:true },
+  { slug:'d1-comp', start:'2:15 PM', end:'3:00 PM', room:'B', track:'sales', type:'breakout', title:'Your Comp Plan Is Killing Your Pipeline', speakers:['Amy Cook'], reg:true },
+  { slug:'d1-build-ai', start:'2:15 PM', end:'3:00 PM', room:'C', track:'ai', type:'breakout', title:'How to Build a Business with AI', speakers:['Jon Cheney'], reg:true },
+  { slug:'d1-break-pm', start:'3:00 PM', end:'3:15 PM', room:null, track:null, type:'break', title:'Break', speakers:[], reg:false },
+  { slug:'d1-lead-arntz', start:'3:15 PM', end:'4:00 PM', room:'A', track:'self-leadership', type:'breakout', title:'Leadership', speakers:['Steve Arntz'], reg:true },
+  { slug:'d1-hackathon', start:'3:15 PM', end:'5:00 PM', room:'B', track:'ai', type:'special', title:'Hackathon', speakers:[], reg:true },
+];
+const DAY2 = [
+  { slug:'d2-future', start:'8:45 AM', end:'9:15 AM', room:'MAIN', track:null, type:'keynote', title:'AI and the Future of Utah', speakers:['Jeremy Andrus','Clint Betts'], reg:true },
+  { slug:'d2-worldcup', start:'9:15 AM', end:'10:50 AM', room:'MAIN', track:null, type:'mainstage', title:'Startup World Cup — 10 Finalists', speakers:[], reg:true },
+  { slug:'d2-chaos', start:'11:00 AM', end:'11:35 AM', room:'A', track:'operations', type:'breakout', title:'From Chaos to Process', speakers:['Jake Fackrell'], reg:true },
+  { slug:'d2-automation', start:'11:00 AM', end:'11:35 AM', room:'B', track:'ai', type:'breakout', title:'AI Automation', speakers:['Gabe Larsen'], reg:true },
+  { slug:'d2-growth', start:'11:00 AM', end:'11:35 AM', room:'C', track:'sales', type:'breakout', title:'AI-Powered Growth Marketing', speakers:['Michael Schmutz'], reg:true },
+  { slug:'d2-room-owes', start:'11:40 AM', end:'12:15 PM', room:'A', track:'self-leadership', type:'breakout', title:'The Room Owes You Nothing: Leading Without a Resume', speakers:['Kurt Workman','Clint Betts'], reg:true },
+  { slug:'d2-unexpected', start:'11:40 AM', end:'12:15 PM', room:'B', track:'marketing', type:'breakout', title:'The Unexpected Obvious of Growth', speakers:['Zack Oates'], reg:true },
+  { slug:'d2-eventmkt', start:'11:40 AM', end:'12:15 PM', room:'C', track:'marketing', type:'breakout', title:'Event Marketing', speakers:['Catherine Bennett','Hayden Harward','Kolleen Russo'], reg:true },
+  { slug:'d2-lunch', start:'12:30 PM', end:'2:00 PM', room:null, track:null, type:'break', title:'Networking Lunch', speakers:[], reg:false },
+  { slug:'d2-signal', start:'2:00 PM', end:'2:35 PM', room:'A', track:'marketing', type:'breakout', title:'Stop Producing Noise. Start Building Signal', speakers:['Krista Parry'], reg:true },
+  { slug:'d2-pydantic', start:'2:00 PM', end:'2:35 PM', room:'B', track:'ai', type:'breakout', title:'Building Reliable AI Workflow Automations with Pydantic & n8n', speakers:['Jordan Gunderson'], reg:true },
+  { slug:'d2-teams', start:'2:00 PM', end:'2:35 PM', room:'C', track:'operations', type:'breakout', title:'When Teams Stop Talking, Data Stops Working', speakers:['Russ Hannig'], reg:true },
+  { slug:'d2-sustainable', start:'2:40 PM', end:'3:40 PM', room:'A', track:'ai', type:'panel', title:'Sustainable AI and the rise of the Mega Data Centers', speakers:['Brian Beutler'], reg:true },
+  { slug:'d2-office-hours', start:'2:40 PM', end:'3:15 PM', room:'RESOURCE', track:null, type:'special', title:'Open Office Hours', speakers:[], reg:true },
+  { slug:'d2-community', start:'2:40 PM', end:'3:15 PM', room:'C', track:'marketing', type:'breakout', title:'Building Community in the Age of AI', speakers:['Sindee Savage'], reg:true },
+  { slug:'d2-video-ad', start:'3:20 PM', end:'4:00 PM', room:'B', track:'marketing', type:'breakout', title:'The Million Dollar Video Ad Framework', speakers:['Jake Larsen'], reg:true },
+  { slug:'d2-capacity', start:'3:20 PM', end:'4:00 PM', room:'C', track:'self-leadership', type:'breakout', title:'From Grinding to Growing: Architect Your Capacity Wall', speakers:['Russ Simon'], reg:true },
+];
+const DAYS = { 1: DAY1, 2: DAY2 };
+const DAY_LABELS = { 1: 'Day 1', 2: 'Day 2' };
+
+const DEMO_ATTENDEES = ['Maya E.', 'Devin P.', 'Priya R.', 'Tomás C.'];
+function fakeAttendeeCount(slug) {
+  let h = 0; for (const c of slug) h = (h * 31 + c.charCodeAt(0)) % 97;
+  return h % 5;
+}
+
+// ---------- state ----------
+let state = { day: 1, track: null, room: null, q: '' };
+let mySchedule = JSON.parse(localStorage.getItem('startfest_preview_schedule') || '[]');
+
+function saveSchedule() { localStorage.setItem('startfest_preview_schedule', JSON.stringify(mySchedule)); }
+function isAdded(slug) { return mySchedule.includes(slug); }
+function allSessions() { return [...DAY1.map(s=>({...s,day:1})), ...DAY2.map(s=>({...s,day:2}))]; }
+function findSession(slug) { return allSessions().find(s => s.slug === slug); }
+
+function overlaps(a, b) {
+  const t = (s) => { const [h,m] = to24(s); return h*60+m; };
+  return t(a.start) < t(b.end) && t(b.start) < t(a.end);
+}
+function to24(t) {
+  const [time, ap] = t.split(' ');
+  let [h, m] = time.split(':').map(Number);
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return [h, m];
+}
+function conflictsFor(session) {
+  return mySchedule
+    .map(findSession)
+    .filter(Boolean)
+    .filter((s) => s.slug !== session.slug && s.day === session.day && overlaps(s, session));
+}
+
+function initials(name) { return name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase(); }
+function avatarColor(name) { const palette=['#C4E538','#21C99A','#4FB3F0','#6B7BF7','#A55BE0','#E84BC9']; let h=0; for(const c of name) h=(h*31+c.charCodeAt(0))%palette.length; return palette[h]; }
+
+function renderDayTabs() {
+  const el = document.getElementById('day-tabs');
+  el.innerHTML = [1,2].map(d => `<button class="day-tab${state.day===d?' active':''}" data-day="${d}">${DAY_LABELS[d]}</button>`).join('');
+  el.querySelectorAll('.day-tab').forEach(btn => btn.addEventListener('click', () => { state.day = Number(btn.dataset.day); renderAgenda(); }));
+}
+
+function renderFilters() {
+  const el = document.getElementById('filters');
+  const chips = TRACKS.map(t => `<span class="chip${state.track===t.slug?' active':''}" data-track="${t.slug}" style="background:${t.colorHex};color:${t.textHex}">${t.name}</span>`).join('');
+  el.innerHTML = `
+    ${chips}
+    <select id="room-filter"><option value="">All rooms</option>${Object.entries(ROOMS).map(([code,name])=>`<option value="${code}"${state.room===code?' selected':''}>${name}</option>`).join('')}</select>
+    <input type="text" id="q-filter" placeholder="Search title or speaker" value="${state.q}">
+    <button class="clear" id="clear-filters">Clear filters</button>
+  `;
+  el.querySelectorAll('.chip').forEach(chip => chip.addEventListener('click', () => {
+    state.track = state.track === chip.dataset.track ? null : chip.dataset.track;
+    renderFilters(); renderAgenda();
+  }));
+  document.getElementById('room-filter').addEventListener('change', (e) => { state.room = e.target.value || null; renderAgenda(); });
+  document.getElementById('q-filter').addEventListener('input', (e) => { state.q = e.target.value; renderAgenda(); });
+  document.getElementById('clear-filters').addEventListener('click', () => { state.track=null; state.room=null; state.q=''; renderFilters(); renderAgenda(); });
+}
+
+function sessionCardHtml(s, opts) {
+  opts = opts || {};
+  const track = s.track ? trackBy[s.track] : null;
+  const conflicts = conflictsFor(s);
+  const added = isAdded(s.slug);
+  const attendeeCount = fakeAttendeeCount(s.slug) + (added ? 1 : 0);
+  const avatars = DEMO_ATTENDEES.slice(0, Math.min(4, attendeeCount)).map(n => `<div class="avatar" style="background:${avatarColor(n)}" title="${n}">${initials(n)}</div>`).join('');
+  const more = attendeeCount > 4 ? `<span class="attendee-note">+${attendeeCount-4} more</span>` : '';
+  const noOne = attendeeCount === 0 ? '<span class="attendee-note">No one’s added this yet. Be the first.</span>' : '';
+  const btn = s.reg
+    ? added
+      ? `<button class="btn added small" data-toggle="${s.slug}">Added ✓</button>`
+      : conflicts.length
+        ? `<button class="btn warn small" data-toggle="${s.slug}" title="Overlaps: ${conflicts.map(c=>c.title).join(', ')}">Overlaps — Add anyway</button>`
+        : `<button class="btn small" data-toggle="${s.slug}">Add</button>`
+    : '';
+  return `
+    <div class="card">
+      ${track ? `<span class="pill" style="background:${track.colorHex};color:${track.textHex}">${track.name}</span>` : ''}
+      <div class="title">${s.title}${s.roomConflict ? ' <span style="color:#E0453C;font-size:11px;">⚠ room double-booked</span>' : ''}</div>
+      ${s.speakers.length ? `<div class="speakers">${s.speakers.join(' · ')}</div>` : ''}
+      <div class="time">${s.start} – ${s.end}${s.room ? ` · ${ROOMS[s.room]}` : ''}</div>
+      <div class="card-foot">
+        <div class="avatar-stack">${avatars}</div>${more}${noOne}
+        ${btn}
+      </div>
+    </div>`;
+}
+
+function renderAgenda() {
+  const sessions = DAYS[state.day].filter(s => {
+    if (state.track && s.track !== state.track) return false;
+    if (state.room && s.room !== state.room) return false;
+    if (state.q) {
+      const needle = state.q.toLowerCase();
+      const hay = (s.title + ' ' + s.speakers.join(' ')).toLowerCase();
+      if (!hay.includes(needle)) return false;
+    }
+    return true;
+  });
+
+  const el = document.getElementById('agenda-body');
+  if (!sessions.length) {
+    el.innerHTML = `<div class="empty">No sessions match those filters.<br><button class="btn" id="empty-clear" style="margin-top:10px;">Clear filters</button></div>`;
+    document.getElementById('empty-clear').addEventListener('click', () => { state.track=null; state.room=null; state.q=''; renderFilters(); renderAgenda(); });
+    return;
+  }
+
+  // group into ordered "rows": plenary/break as full-width, consecutive breakouts grouped by identical start time into a room grid
+  let html = '';
+  let i = 0;
+  while (i < sessions.length) {
+    const s = sessions[i];
+    const isPlenary = s.room === 'MAIN' || !s.room || ['ceremony','keynote','panel','mainstage'].includes(s.type);
+    if (s.type === 'break') {
+      html += `<div class="break-strip"><span>${s.title}</span><span>${s.start} – ${s.end}</span></div>`;
+      i++; continue;
+    }
+    if (isPlenary) {
+      html += `<div class="plenary"><span class="time">${s.start} – ${s.end}</span><span class="title">${s.title}</span><span class="meta">${s.speakers.join(', ')}</span></div>`;
+      i++; continue;
+    }
+    // gather all consecutive breakout sessions sharing this start time
+    const group = [];
+    while (i < sessions.length && sessions[i].start === s.start && sessions[i].type !== 'break' && sessions[i].room !== 'MAIN' && !['ceremony','keynote','panel','mainstage'].includes(sessions[i].type)) {
+      group.push(sessions[i]); i++;
+    }
+    html += `<div class="room-grid">${group.map(g => `<div><div class="room-col-label">${g.room ? ROOMS[g.room] : ''}</div>${sessionCardHtml(g)}</div>`).join('')}</div>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll('[data-toggle]').forEach(btn => btn.addEventListener('click', () => {
+    const slug = btn.dataset.toggle;
+    if (isAdded(slug)) mySchedule = mySchedule.filter(s => s !== slug);
+    else mySchedule.push(slug);
+    saveSchedule(); renderAgenda(); renderScheduleCount();
+  }));
+}
+
+function renderScheduleCount() { document.getElementById('sched-count').textContent = mySchedule.length; }
+
+function renderSchedule() {
+  const el = document.getElementById('schedule-body');
+  const items = mySchedule.map(findSession).filter(Boolean).sort((a,b) => a.day - b.day || to24(a.start).join('').localeCompare(to24(b.start).join('')));
+  if (!items.length) {
+    el.innerHTML = `<div class="empty">Nothing on your schedule yet. Browse the agenda and add the sessions you want.<br><button class="btn" id="go-agenda" style="margin-top:10px;">Browse agenda</button></div>`;
+    document.getElementById('go-agenda').addEventListener('click', () => document.getElementById('tab-agenda').click());
+    return;
+  }
+  const anyConflict = items.some(s => conflictsFor(s).length > 0);
+  el.innerHTML = `
+    ${anyConflict ? `<div class="break-strip" style="background:rgba(224,69,60,0.35);">⚠ Some sessions on your schedule overlap. Review below.</div>` : ''}
+    ${[1,2].map(d => {
+      const dayItems = items.filter(s => s.day === d);
+      if (!dayItems.length) return '';
+      return `<h3 style="color:#fff;">${DAY_LABELS[d]}</h3>` + dayItems.map(s => {
+        const conflicts = conflictsFor(s);
+        return `<div class="card" style="${conflicts.length ? 'box-shadow:0 0 0 2px #E0A93C, 0 8px 24px rgba(10,30,60,0.15);' : ''}">
+          <div class="title">${s.title}</div>
+          <div class="speakers">${s.speakers.join(' · ')}</div>
+          <div class="time">${s.start} – ${s.end}${s.room ? ` · ${ROOMS[s.room]}` : ''}</div>
+          ${conflicts.length ? `<div style="color:#E0A93C;font-size:12px;font-weight:700;">Overlaps: ${conflicts.map(c=>c.title).join(', ')}</div>` : ''}
+          <div class="card-foot"><span></span><button class="btn small added" data-remove="${s.slug}">Remove</button></div>
+        </div>`;
+      }).join('');
+    }).join('')}
+  `;
+  el.querySelectorAll('[data-remove]').forEach(btn => btn.addEventListener('click', () => {
+    mySchedule = mySchedule.filter(s => s !== btn.dataset.remove);
+    saveSchedule(); renderSchedule(); renderScheduleCount();
+  }));
+}
+
+document.getElementById('tab-agenda').addEventListener('click', () => {
+  document.getElementById('tab-agenda').classList.add('active');
+  document.getElementById('tab-schedule').classList.remove('active');
+  document.getElementById('agenda-view').style.display = '';
+  document.getElementById('schedule-view').style.display = 'none';
+});
+document.getElementById('tab-schedule').addEventListener('click', () => {
+  document.getElementById('tab-schedule').classList.add('active');
+  document.getElementById('tab-agenda').classList.remove('active');
+  document.getElementById('agenda-view').style.display = 'none';
+  document.getElementById('schedule-view').style.display = '';
+  renderSchedule();
+});
+
+renderDayTabs();
+renderFilters();
+renderAgenda();
+renderScheduleCount();
+</script>
+</body>
+</html>

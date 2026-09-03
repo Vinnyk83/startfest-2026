@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign up — StartFEST 2026</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+<header class="site-header"><div id="site-nav"></div></header>
+
+<div class="card form-card">
+  <h1>Sign up</h1>
+  <form id="register-form" novalidate>
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="email" required>
+      <p class="error-text" id="email-error" style="display:none;"></p>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="new-password" required>
+      <p class="help-text">At least 8 characters.</p>
+      <p class="error-text" id="password-error" style="display:none;"></p>
+    </div>
+    <div class="field">
+      <label for="fullName">Full name</label>
+      <input type="text" id="fullName" name="fullName" autocomplete="name" required>
+      <p class="error-text" id="fullName-error" style="display:none;"></p>
+    </div>
+    <div class="field">
+      <label for="jobTitle">Job title (optional)</label>
+      <input type="text" id="jobTitle" name="jobTitle">
+    </div>
+    <div class="field">
+      <label for="company">Company (optional)</label>
+      <input type="text" id="company" name="company">
+    </div>
+    <div class="field">
+      <label for="bio">Short bio (optional)</label>
+      <textarea id="bio" name="bio" rows="3" maxlength="500"></textarea>
+      <p class="help-text">Up to 500 characters.</p>
+    </div>
+    <p class="error-text" id="form-error" style="display:none;"></p>
+    <button type="submit" class="btn btn--primary" id="submit-btn" style="width:100%;">Create account</button>
+  </form>
+  <p class="help-text" style="margin-top:16px;">Already have an account? <a href="/login">Log in</a></p>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/register.js"></script>
+</body>
+</html>

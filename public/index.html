@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StartFEST 2026 — Agenda</title>
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/pages.css">
+</head>
+<body>
+<header class="site-header"><div id="site-nav"></div></header>
+
+<div class="page-header">
+  <h1 id="conf-name">StartFEST 2026</h1>
+  <p class="tagline" id="conf-tagline"></p>
+  <p class="date-range" id="conf-dates"></p>
+</div>
+
+<div class="day-switcher" id="day-switcher"></div>
+
+<div class="filters" id="filters">
+  <div class="filter-chips" id="track-chips"></div>
+  <select id="room-select" aria-label="Filter by room">
+    <option value="">All rooms</option>
+  </select>
+  <input type="search" id="search-input" placeholder="Search sessions…" aria-label="Search sessions">
+  <button type="button" class="clear-filters" id="clear-filters">Clear filters</button>
+</div>
+
+<main class="agenda-body" id="agenda-body">
+  <div class="card skeleton skeleton-card"></div>
+  <div class="card skeleton skeleton-card"></div>
+  <div class="card skeleton skeleton-card"></div>
+</main>
+
+<footer class="site-footer" id="site-footer"></footer>
+
+<script src="/js/app.js"></script>
+<script src="/js/session-actions.js"></script>
+<script src="/js/session-card.js"></script>
+<script src="/js/index.js"></script>
+</body>
+</html>
